@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contábil Inteligente | Análise Fiscal com IA</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:   #0B1F3A;
+      --blue:   #1A56DB;
+      --blue-light: #3B82F6;
+      --green:  #10B77F;
+      --gray:   #F4F6FA;
+      --gray-mid: #8A97B0;
+      --white:  #FFFFFF;
+      --text:   #1C2B40;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--gray);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── HEADER ── */
+    header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      background: rgba(11,31,58,0.96);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      padding: 0 2rem;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--blue), var(--green));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+
+    .logo-text {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: var(--white);
+      line-height: 1.1;
+    }
+
+    .logo-text span {
+      display: block;
+      font-size: 0.6rem;
+      font-weight: 400;
+      color: var(--green);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .header-badge {
+      background: rgba(16,183,127,0.15);
+      border: 1px solid rgba(16,183,127,0.3);
+      color: var(--green);
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: 20px;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh;
+      background: linear-gradient(160deg, var(--navy) 0%, #0D2A50 55%, #0B3D2E 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 100px 2rem 60px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 70% 30%, rgba(26,86,219,0.18) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 40% at 20% 80%, rgba(16,183,127,0.12) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+    }
+
+    .hero-content { position: relative; z-index: 2; max-width: 780px; }
+
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(16,183,127,0.12);
+      border: 1px solid rgba(16,183,127,0.25);
+      color: var(--green);
+      font-size: 0.78rem;
+      font-weight: 500;
+      padding: 6px 16px;
+      border-radius: 20px;
+      margin-bottom: 28px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      animation: fadeUp 0.7s ease both;
+    }
+
+    .hero-eyebrow::before {
+      content: '';
+      width: 6px; height: 6px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.4); }
+    }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2.4rem, 6vw, 4.2rem);
+      font-weight: 800;
+      color: var(--white);
+      line-height: 1.1;
+      margin-bottom: 24px;
+      animation: fadeUp 0.7s 0.1s ease both;
+    }
+
+    h1 em {
+      font-style: normal;
+      background: linear-gradient(90deg, var(--blue-light), var(--green));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      font-size: 1.1rem;
+      color: rgba(255,255,255,0.65);
+      line-height: 1.7;
+      max-width: 580px;
+      margin: 0 auto 44px;
+      font-weight: 300;
+      animation: fadeUp 0.7s 0.2s ease both;
+    }
+
+    .hero-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(135deg, var(--blue), #1048b8);
+      color: var(--white);
+      font-family: 'Syne', sans-serif;
+      font-weight: 600;
+      font-size: 1rem;
+      padding: 16px 36px;
+      border-radius: 50px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 8px 32px rgba(26,86,219,0.4);
+      animation: fadeUp 0.7s 0.3s ease both;
+    }
+
+    .hero-cta:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 40px rgba(26,86,219,0.55);
+    }
+
+    .hero-cta svg { transition: transform 0.2s; }
+    .hero-cta:hover svg { transform: translateX(4px); }
+
+    /* ── STATS ── */
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 48px;
+      margin-top: 64px;
+      flex-wrap: wrap;
+      animation: fadeUp 0.7s 0.4s ease both;
+    }
+
+    .stat { text-align: center; }
+
+    .stat-num {
+      font-family: 'Syne', sans-serif;
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--white);
+    }
+
+    .stat-num span { color: var(--green); }
+
+    .stat-label {
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.45);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    /* ── FEATURES ── */
+    .features {
+      padding: 96px 2rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      font-weight: 800;
+      color: var(--navy);
+      line-height: 1.15;
+      margin-bottom: 16px;
+    }
+
+    .section-sub {
+      font-size: 1rem;
+      color: var(--gray-mid);
+      max-width: 520px;
+      line-height: 1.7;
+      margin-bottom: 56px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
+    }
+
+    .card {
+      background: var(--white);
+      border-radius: 20px;
+      padding: 36px 32px;
+      border: 1px solid rgba(11,31,58,0.07);
+      transition: transform 0.25s, box-shadow 0.25s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--blue), var(--green));
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+
+    .card:hover { transform: translateY(-4px); box-shadow: 0 16px 48px rgba(11,31,58,0.1); }
+    .card:hover::after { opacity: 1; }
+
+    .card-icon {
+      width: 52px; height: 52px;
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+
+    .icon-blue { background: rgba(26,86,219,0.1); }
+    .icon-green { background: rgba(16,183,127,0.1); }
+    .icon-gray { background: rgba(138,151,176,0.12); }
+
+    .card h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 10px;
+    }
+
+    .card p {
+      font-size: 0.9rem;
+      color: var(--gray-mid);
+      line-height: 1.65;
+    }
+
+    /* ── HOW IT WORKS ── */
+    .how {
+      background: var(--navy);
+      padding: 96px 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .how::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 50% 60% at 80% 50%, rgba(26,86,219,0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .how-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 2;
+    }
+
+    .how .section-label { color: var(--green); }
+    .how .section-title { color: var(--white); }
+    .how .section-sub { color: rgba(255,255,255,0.5); }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 32px;
+      margin-top: 56px;
+    }
+
+    .step {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .step-num {
+      font-family: 'Syne', sans-serif;
+      font-size: 3rem;
+      font-weight: 800;
+      color: rgba(255,255,255,0.06);
+      line-height: 1;
+    }
+
+    .step-icon {
+      font-size: 2rem;
+      margin-top: -20px;
+    }
+
+    .step h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--white);
+    }
+
+    .step p {
+      font-size: 0.88rem;
+      color: rgba(255,255,255,0.45);
+      line-height: 1.65;
+    }
+
+    /* ── CHAT SECTION ── */
+    .chat-section {
+      padding: 96px 2rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .chat-wrapper {
+      background: var(--white);
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(11,31,58,0.12);
+      border: 1px solid rgba(11,31,58,0.07);
+    }
+
+    .chat-topbar {
+      background: var(--navy);
+      padding: 18px 28px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .chat-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .chat-dots span {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+    }
+
+    .dot-red { background: #FF5F57; }
+    .dot-yellow { background: #FFBD2E; }
+    .dot-green { background: #28C840; }
+
+    .chat-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: rgba(255,255,255,0.7);
+      margin-left: 8px;
+    }
+
+    .chat-status {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: var(--green);
+      font-weight: 500;
+    }
+
+    .chat-status::before {
+      content: '';
+      width: 6px; height: 6px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .chat-iframe-wrap {
+      height: 600px;
+      position: relative;
+    }
+
+    .chat-iframe-wrap iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      background: var(--navy);
+      border-top: 1px solid rgba(255,255,255,0.06);
+      padding: 40px 2rem;
+      text-align: center;
+    }
+
+    .footer-logo {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: 8px;
+    }
+
+    .footer-sub {
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.3);
+    }
+
+    .footer-sub a {
+      color: var(--green);
+      text-decoration: none;
+    }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(32px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: none;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 600px) {
+      .stats { gap: 32px; }
+      .chat-iframe-wrap { height: 500px; }
+      .header-badge { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <a href="#" class="logo">
+    <div class="logo-icon">🧮</div>
+    <div class="logo-text">
+      Contábil Inteligente
+      <span>Mato Grosso · IA Fiscal</span>
+    </div>
+  </a>
+  <div class="header-badge">● IA Ativa</div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-content">
+    <div class="hero-eyebrow">Inteligência Artificial Contábil</div>
+    <h1>Reduza custos com<br /><em>análise fiscal por IA</em></h1>
+    <p class="hero-sub">
+      Envie uma foto ou documento — nossa IA analisa notas fiscais, identifica
+      créditos tributários e aponta onde sua empresa pode economizar. Atendemos
+      todos os setores de Mato Grosso.
+    </p>
+    <a href="#chat" class="hero-cta">
+      Analisar agora
+      <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+        <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </a>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-num">+<span>350</span>km</div>
+        <div class="stat-label">Área de atuação</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num"><span>100</span>%</div>
+        <div class="stat-label">Digital e sem fila</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num"><span>24</span>h</div>
+        <div class="stat-label">Disponível sempre</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features">
+  <p class="section-label reveal">O que fazemos</p>
+  <h2 class="section-title reveal">Análise contábil em<br />segundos, não dias</h2>
+  <p class="section-sub reveal">
+    Nossa IA lê seus documentos fiscais e entrega um diagnóstico completo —
+    sem burocracia, sem espera.
+  </p>
+
+  <div class="cards">
+    <div class="card reveal">
+      <div class="card-icon icon-blue">📄</div>
+      <h3>Leitura de Notas Fiscais</h3>
+      <p>Envie a foto da NF e a IA extrai automaticamente todos os dados: CNPJ, valores, impostos, produtos e fornecedores.</p>
+    </div>
+    <div class="card reveal">
+      <div class="card-icon icon-green">💰</div>
+      <h3>Identificação de Créditos</h3>
+      <p>Detectamos oportunidades de crédito de ICMS, PIS e COFINS que muitas empresas deixam passar — e que são seu dinheiro de volta.</p>
+    </div>
+    <div class="card reveal">
+      <div class="card-icon icon-blue">📊</div>
+      <h3>Comparação de Mercado</h3>
+      <p>Comparamos o preço pago com médias regionais de MT e alertamos quando você está pagando acima do mercado.</p>
+    </div>
+    <div class="card reveal">
+      <div class="card-icon icon-green">⚠️</div>
+      <h3>Alertas de Risco Fiscal</h3>
+      <p>Identificamos erros de CFOP, natureza de operação incorreta e outros riscos que podem gerar autuação fiscal.</p>
+    </div>
+    <div class="card reveal">
+      <div class="card-icon icon-gray">🏭</div>
+      <h3>Todos os Setores</h3>
+      <p>Agronegócio, construção civil, transporte, comércio, saúde e serviços. Nossa IA se adapta ao seu setor automaticamente.</p>
+    </div>
+    <div class="card reveal">
+      <div class="card-icon icon-gray">🔒</div>
+      <h3>Seguro e Confidencial</h3>
+      <p>Seus documentos são analisados com segurança. Nenhuma informação é compartilhada com terceiros.</p>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="how">
+  <div class="how-inner">
+    <p class="section-label reveal">Como funciona</p>
+    <h2 class="section-title reveal">Simples como tirar<br />uma foto</h2>
+    <p class="section-sub reveal">
+      Sem cadastro, sem complicação. Basta abrir o chat e enviar seu documento.
+    </p>
+
+    <div class="steps">
+      <div class="step reveal">
+        <div class="step-num">01</div>
+        <div class="step-icon">📸</div>
+        <h3>Tire uma foto</h3>
+        <p>Fotografe sua nota fiscal, boleto, recibo ou extrato — pode ser pelo celular mesmo.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">02</div>
+        <div class="step-icon">🤖</div>
+        <h3>IA analisa</h3>
+        <p>Nossa inteligência artificial lê o documento, extrai os dados e compara com o mercado de MT.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">03</div>
+        <div class="step-icon">📋</div>
+        <h3>Receba o diagnóstico</h3>
+        <p>Em segundos você recebe um relatório completo com economias identificadas e riscos fiscais.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">04</div>
+        <div class="step-icon">💡</div>
+        <h3>Tome decisões melhores</h3>
+        <p>Use as recomendações para negociar melhor, recuperar créditos e reduzir custos reais.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CHAT -->
+<section class="chat-section" id="chat">
+  <p class="section-label reveal">Experimente agora</p>
+  <h2 class="section-title reveal">Envie seu documento<br />e veja a análise</h2>
+  <p class="section-sub reveal">
+    Tire uma foto da nota fiscal ou faça upload do arquivo. A IA responde em instantes.
+  </p>
+
+  <div class="chat-wrapper reveal">
+    <div class="chat-topbar">
+      <div class="chat-dots">
+        <span class="dot-red"></span>
+        <span class="dot-yellow"></span>
+        <span class="dot-green"></span>
+      </div>
+      <div class="chat-title">Contábil Inteligente — Análise Fiscal por IA</div>
+      <div class="chat-status">Online</div>
+    </div>
+    <div class="chat-iframe-wrap">
+      <iframe
+        src="https://udify.app/chat/d2nHDbJJajRmMsXt"
+        allow="microphone; camera"
+        title="Contábil Inteligente Chat">
+      </iframe>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">Contábil Inteligente</div>
+  <p class="footer-sub">
+    Inteligência Artificial a serviço da eficiência fiscal · Mato Grosso<br />
+    <a href="https://contabilinteligente.api.br">contabilinteligente.api.br</a>
+  </p>
+</footer>
+
+<script>
+  // Reveal on scroll
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((e, i) => {
+      if (e.isIntersecting) {
+        setTimeout(() => e.target.classList.add('visible'), i * 80);
+        observer.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.12 });
+
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>
