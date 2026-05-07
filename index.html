@@ -3,18 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contábil Inteligente | Acesso</title>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <title>Contábil Inteligente | Área do Cliente</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet" />
 
-  <!-- Firebase SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, collection, addDoc, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-    // ======================================================
-    // 🔧 SUBSTITUA AQUI com suas credenciais do Firebase
-    // ======================================================
     const firebaseConfig = {
       apiKey: "AIzaSyDuOOQEBgaoZuNUMvLrUN3DPetG1mnQTeg",
       authDomain: "contabil-inteligente.firebaseapp.com",
@@ -24,693 +20,454 @@
       appId: "1:254707935067:web:aa602726f8a701baf75c7e",
       measurementId: "G-XEETQDTSN3"
     };
-    // ======================================================
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // Login
+    window.APP = {
+      user: null, empresa: {}, historico: [], conversa: [],
+      CLAUDE_KEY: "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"
+    };
+
     window.fazerLogin = async () => {
       const email = document.getElementById('email').value;
       const senha = document.getElementById('senha').value;
-      const btnLogin = document.getElementById('btn-login');
-      const erro = document.getElementById('erro-login');
-
-      if (!email || !senha) {
-        erro.textContent = 'Preencha email e senha.';
-        erro.style.display = 'block';
-        return;
-      }
-
-      btnLogin.disabled = true;
-      btnLogin.textContent = 'Entrando...';
+      const btn = document.getElementById('btn-login');
+      const erro = document.getElementById('erro');
       erro.style.display = 'none';
-
-      try {
-        await signInWithEmailAndPassword(auth, email, senha);
-      } catch (e) {
-        erro.textContent = 'Email ou senha incorretos.';
-        erro.style.display = 'block';
-        btnLogin.disabled = false;
-        btnLogin.textContent = 'Entrar';
-      }
+      if (!email || !senha) { erro.textContent = 'Preencha email e senha.'; erro.style.display = 'block'; return; }
+      btn.disabled = true; btn.textContent = 'Entrando...';
+      try { await signInWithEmailAndPassword(auth, email, senha); }
+      catch (e) { erro.textContent = 'Email ou senha incorretos.'; erro.style.display = 'block'; btn.disabled = false; btn.textContent = 'Entrar'; }
     };
 
-    // Logout
-    window.fazerLogout = async () => {
-      await signOut(auth);
-    };
+    window.fazerLogout = async () => { await signOut(auth); };
+    window.enterLogin = (e) => { if (e.key === 'Enter') window.fazerLogin(); };
 
-    // Enter no campo senha
-    window.enterLogin = (e) => {
-      if (e.key === 'Enter') window.fazerLogin();
-    };
-
-    // Auth state
     onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Busca dados da empresa no Firestore
+        window.APP.user = user;
         try {
-          const docRef = doc(db, "clientes", user.uid);
-          const docSnap = await getDoc(docRef);
-          let nomeEmpresa = 'Empresa';
-          let plano = 'Básico';
-          if (docSnap.exists()) {
-            nomeEmpresa = docSnap.data().nomeEmpresa || nomeEmpresa;
-            plano = docSnap.data().plano || plano;
-          }
-          document.getElementById('nome-empresa').textContent = nomeEmpresa;
-          document.getElementById('plano-empresa').textContent = plano;
-          document.getElementById('user-email').textContent = user.email;
-        } catch(e) {
-          document.getElementById('nome-empresa').textContent = user.email;
-        }
+          const snap = await getDoc(doc(db, "clientes", user.uid));
+          window.APP.empresa = snap.exists() ? snap.data() : { nomeEmpresa: user.email.split('@')[0], plano: 'Básico' };
+        } catch(e) { window.APP.empresa = { nomeEmpresa: 'Cliente', plano: 'Básico' }; }
+        document.getElementById('nome-empresa').textContent = window.APP.empresa.nomeEmpresa || 'Cliente';
+        document.getElementById('plano-tag').textContent = window.APP.empresa.plano || 'Básico';
+        document.getElementById('user-email').textContent = user.email;
+        document.getElementById('dash-nome').textContent = window.APP.empresa.nomeEmpresa || 'Cliente';
+        await carregarHistorico();
         mostrarPainel();
-      } else {
-        mostrarLogin();
-      }
+      } else { mostrarLogin(); }
     });
 
-    function mostrarLogin() {
-      document.getElementById('tela-login').style.display = 'flex';
-      document.getElementById('tela-painel').style.display = 'none';
+    function mostrarLogin() { document.getElementById('tela-login').style.display='flex'; document.getElementById('tela-painel').style.display='none'; }
+    function mostrarPainel() { document.getElementById('tela-login').style.display='none'; document.getElementById('tela-painel').style.display='flex'; atualizarDashboard(); }
+
+    window.trocarAba = (aba, btn) => {
+      document.querySelectorAll('.aba').forEach(a => a.classList.remove('ativa'));
+      document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('ativo'));
+      document.getElementById('aba-'+aba).classList.add('ativa');
+      if (btn) btn.classList.add('ativo');
+      if (aba === 'relatorio') gerarRelatorio();
+    };
+
+    window.enviarMensagem = async () => {
+      const input = document.getElementById('chat-input');
+      const texto = input.value.trim();
+      if (!texto) return;
+      input.value = '';
+      adicionarBolha('user', texto);
+      window.APP.conversa.push({ role: 'user', content: texto });
+      mostrarDigitando(true);
+      try {
+        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': window.APP.CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-calls': 'true' },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6', max_tokens: 2048,
+            system: `Você é o Assistente Inteligente da Contábil Inteligente, especialista em análise financeira, fiscal e agronômica para Mato Grosso (até 350km de Cuiabá). Atende: Empresas, Produtores Rurais, Pecuaristas, Famílias Rurais e Agrônomos.
+
+AO RECEBER UM DOCUMENTO:
+1. IDENTIFIQUE o tipo e setor automaticamente
+2. EXTRAIA todos os dados relevantes
+3. ANALISE comparando com mercado de MT
+4. RESPONDA sempre com:
+✅ Análise Concluída
+📋 O que encontrei: (dados)
+💰 Economia ou Oportunidade: (valor estimado quando possível)
+⚠️ Atenção: (riscos fiscais)
+💡 Minha Recomendação: (próximo passo)
+
+Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite sempre a fonte.`,
+            messages: window.APP.conversa
+          })
+        });
+        const data = await resp.json();
+        const resposta = data.content[0].text;
+        window.APP.conversa.push({ role: 'assistant', content: resposta });
+        mostrarDigitando(false);
+        adicionarBolha('assistant', resposta);
+        await salvarAnalise(texto, resposta);
+        await carregarHistorico();
+        atualizarDashboard();
+      } catch(e) {
+        mostrarDigitando(false);
+        adicionarBolha('assistant', '⚠️ Erro ao conectar com a IA. Verifique a chave de API no código.');
+      }
+    };
+
+    window.enterChat = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.enviarMensagem(); } };
+
+    function adicionarBolha(tipo, texto) {
+      const chat = document.getElementById('chat-mensagens');
+      const div = document.createElement('div');
+      div.className = `bolha bolha-${tipo}`;
+      div.innerHTML = tipo === 'assistant'
+        ? texto.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>')
+        : `<p>${texto}</p>`;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
     }
 
-    function mostrarPainel() {
-      document.getElementById('tela-login').style.display = 'none';
-      document.getElementById('tela-painel').style.display = 'flex';
+    function mostrarDigitando(show) {
+      let el = document.getElementById('digitando');
+      if (show && !el) {
+        el = document.createElement('div');
+        el.id = 'digitando'; el.className = 'bolha bolha-assistant digitando';
+        el.innerHTML = '<span></span><span></span><span></span>';
+        document.getElementById('chat-mensagens').appendChild(el);
+        document.getElementById('chat-mensagens').scrollTop = 99999;
+      } else if (!show && el) el.remove();
     }
+
+    async function salvarAnalise(pergunta, resposta) {
+      if (!window.APP.user) return;
+      try {
+        const matchEcon = resposta.match(/R\$\s*([\d.,]+)/);
+        const economia = matchEcon ? parseFloat(matchEcon[1].replace(/\./g,'').replace(',','.')) : 0;
+        await addDoc(collection(db, "analises"), {
+          uid: window.APP.user.uid,
+          empresa: window.APP.empresa.nomeEmpresa || '',
+          pergunta: pergunta.substring(0,200),
+          resposta: resposta.substring(0,2000),
+          economia, temRisco: resposta.includes('⚠️') || resposta.toLowerCase().includes('risco'),
+          data: new Date().toISOString(),
+          mes: new Date().getMonth()+1,
+          ano: new Date().getFullYear()
+        });
+      } catch(e) { console.log('Erro ao salvar:', e); }
+    }
+
+    async function carregarHistorico() {
+      if (!window.APP.user) return;
+      try {
+        const q = query(collection(db,"analises"), where("uid","==",window.APP.user.uid), orderBy("data","desc"));
+        const snap = await getDocs(q);
+        window.APP.historico = snap.docs.map(d => ({id:d.id,...d.data()}));
+      } catch(e) { window.APP.historico = []; }
+    }
+
+    function atualizarDashboard() {
+      const hist = window.APP.historico;
+      const agora = new Date();
+      const mes = hist.filter(a => a.mes===agora.getMonth()+1 && a.ano===agora.getFullYear());
+      const econ = mes.reduce((s,a) => s+(a.economia||0), 0);
+      const riscos = mes.filter(a => a.temRisco).length;
+      document.getElementById('stat-analises').textContent = mes.length;
+      document.getElementById('stat-economia').textContent = econ > 0 ? `R$ ${econ.toLocaleString('pt-BR')}` : 'R$ 0';
+      document.getElementById('stat-riscos').textContent = riscos;
+      document.getElementById('stat-total').textContent = hist.length;
+      const lista = document.getElementById('historico-lista');
+      if (lista) {
+        lista.innerHTML = hist.slice(0,5).map(a => `
+          <div class="hist-item">
+            <div class="hist-pergunta">${a.pergunta.substring(0,80)}...</div>
+            <div class="hist-meta">
+              <span>${new Date(a.data).toLocaleDateString('pt-BR')}</span>
+              ${a.economia>0?`<span class="hist-econ">💰 R$ ${a.economia.toLocaleString('pt-BR')}</span>`:''}
+              ${a.temRisco?`<span class="hist-risco">⚠️ Risco</span>`:''}
+            </div>
+          </div>`).join('') || '<p class="vazio">Nenhuma análise ainda.</p>';
+      }
+    }
+
+    window.gerarRelatorio = async () => {
+      await carregarHistorico();
+      const hist = window.APP.historico;
+      const agora = new Date();
+      const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+      const mesAtual = hist.filter(a => a.mes===agora.getMonth()+1 && a.ano===agora.getFullYear());
+      const totalEcon = mesAtual.reduce((s,a) => s+(a.economia||0), 0);
+      const riscos = mesAtual.filter(a => a.temRisco).length;
+      const porMes = {};
+      hist.forEach(a => {
+        const k = `${a.ano}-${String(a.mes).padStart(2,'0')}`;
+        if (!porMes[k]) porMes[k] = {analises:0,economia:0,riscos:0};
+        porMes[k].analises++; porMes[k].economia += a.economia||0;
+        if (a.temRisco) porMes[k].riscos++;
+      });
+      document.getElementById('relatorio-conteudo').innerHTML = `
+        <div class="rel-header">
+          <div class="rel-logo">🧮 Contábil Inteligente</div>
+          <div class="rel-titulo">Relatório Mensal — ${meses[agora.getMonth()]} ${agora.getFullYear()}</div>
+          <div class="rel-empresa">${window.APP.empresa.nomeEmpresa||'Cliente'}</div>
+        </div>
+        <div class="rel-cards">
+          <div class="rel-card"><div class="rel-num">${mesAtual.length}</div><div class="rel-lbl">Análises realizadas</div></div>
+          <div class="rel-card verde"><div class="rel-num">R$ ${totalEcon.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div><div class="rel-lbl">Economia identificada</div></div>
+          <div class="rel-card ${riscos>0?'vermelho':''}"><div class="rel-num">${riscos}</div><div class="rel-lbl">Riscos fiscais</div></div>
+          <div class="rel-card azul"><div class="rel-num">${hist.length}</div><div class="rel-lbl">Total histórico</div></div>
+        </div>
+        <div class="rel-sec">
+          <div class="rel-sec-titulo">📊 Histórico por mês</div>
+          <table class="rel-tab"><thead><tr><th>Mês</th><th>Análises</th><th>Economia</th><th>Riscos</th></tr></thead><tbody>
+            ${Object.entries(porMes).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6).map(([k,d])=>{
+              const [ano,m]=k.split('-');
+              return `<tr><td>${meses[parseInt(m)-1]} ${ano}</td><td>${d.analises}</td><td>R$ ${d.economia.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td>${d.riscos>0?`⚠️ ${d.riscos}`:'✅ 0'}</td></tr>`;
+            }).join('')||'<tr><td colspan="4" style="text-align:center;color:#999">Nenhum dado ainda</td></tr>'}
+          </tbody></table>
+        </div>
+        <div class="rel-sec">
+          <div class="rel-sec-titulo">📋 Últimas análises do mês</div>
+          ${mesAtual.slice(0,5).map(a=>`
+            <div class="rel-analise">
+              <div class="rel-analise-data">${new Date(a.data).toLocaleDateString('pt-BR')}</div>
+              <div class="rel-analise-texto">${a.pergunta.substring(0,120)}...</div>
+              ${a.economia>0?`<div class="rel-analise-econ">💰 R$ ${a.economia.toLocaleString('pt-BR')}</div>`:''}
+            </div>`).join('')||'<p style="color:#999;text-align:center;padding:20px">Nenhuma análise este mês.</p>'}
+        </div>
+        <div class="rel-rodape">Relatório gerado em ${new Date().toLocaleDateString('pt-BR')} • Contábil Inteligente • contabilinteligente.api.br</div>`;
+    };
   </script>
 
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--navy:#0B1F3A;--blue:#1A56DB;--blue-l:#3B82F6;--green:#10B77F;--red:#EF4444;--gray:#F4F6FA;--gray-mid:#8A97B0;--border:rgba(11,31,58,0.08);--white:#FFFFFF;--text:#1C2B40}
+    html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--text);overflow:hidden}
 
-    :root {
-      --navy:       #0B1F3A;
-      --navy-light: #112744;
-      --blue:       #1A56DB;
-      --blue-light: #3B82F6;
-      --green:      #10B77F;
-      --gray:       #F4F6FA;
-      --gray-mid:   #8A97B0;
-      --white:      #FFFFFF;
-      --text:       #1C2B40;
-      --danger:     #EF4444;
-    }
+    #tela-login{display:flex;height:100vh;align-items:center;justify-content:center;background:linear-gradient(160deg,#0B1F3A 0%,#0D2A50 60%,#0B3D2E 100%);position:relative;overflow:hidden}
+    #tela-login::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 60% at 20% 50%,rgba(26,86,219,0.2) 0%,transparent 65%),radial-gradient(ellipse 50% 50% at 80% 30%,rgba(16,183,127,0.12) 0%,transparent 60%)}
+    .login-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px);background-size:48px 48px}
+    .login-card{position:relative;z-index:2;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(20px);border-radius:24px;padding:48px 44px;width:100%;max-width:420px;animation:fadeUp 0.6s ease both}
+    .login-logo{display:flex;align-items:center;gap:12px;margin-bottom:36px}
+    .login-logo-icon{width:44px;height:44px;background:linear-gradient(135deg,var(--blue),var(--green));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px}
+    .login-logo-text{font-family:'Syne',sans-serif;font-weight:700;font-size:1.1rem;color:#fff;line-height:1.1}
+    .login-logo-text span{display:block;font-size:0.6rem;font-weight:400;color:var(--green);letter-spacing:0.1em;text-transform:uppercase}
+    .login-title{font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;color:#fff;margin-bottom:6px}
+    .login-sub{font-size:0.88rem;color:rgba(255,255,255,0.45);margin-bottom:32px}
+    .campo-label{font-size:0.78rem;font-weight:500;color:rgba(255,255,255,0.6);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:8px;display:block}
+    .campo-input{width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 18px;font-size:0.95rem;color:#fff;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s;margin-bottom:20px}
+    .campo-input:focus{border-color:var(--blue-l);background:rgba(255,255,255,0.09)}
+    .campo-input::placeholder{color:rgba(255,255,255,0.25)}
+    .btn-login{width:100%;background:linear-gradient(135deg,var(--blue),#1048b8);color:#fff;font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;padding:16px;border:none;border-radius:12px;cursor:pointer;transition:opacity 0.2s,transform 0.2s;box-shadow:0 8px 24px rgba(26,86,219,0.4);margin-top:4px}
+    .btn-login:hover{opacity:0.9;transform:translateY(-1px)}
+    .btn-login:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+    .erro{display:none;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#FCA5A5;font-size:0.85rem;padding:12px 16px;border-radius:10px;margin-top:16px;text-align:center}
+    .login-footer{margin-top:28px;text-align:center;font-size:0.78rem;color:rgba(255,255,255,0.25)}
 
-    html, body {
-      height: 100%;
-      font-family: 'DM Sans', sans-serif;
-      background: var(--navy);
-      color: var(--text);
-      overflow: hidden;
-    }
+    #tela-painel{display:none;flex-direction:column;height:100vh;background:var(--gray)}
+    .header{background:var(--navy);padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.06)}
+    .header-logo{display:flex;align-items:center;gap:10px}
+    .header-logo-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--blue),var(--green));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px}
+    .header-logo-text{font-family:'Syne',sans-serif;font-weight:700;font-size:0.95rem;color:#fff}
+    .header-right{display:flex;align-items:center;gap:16px}
+    .header-info{text-align:right}
+    .header-nome{font-family:'Syne',sans-serif;font-size:0.85rem;font-weight:700;color:#fff}
+    .header-plano{font-size:0.68rem;color:var(--green);font-weight:600;letter-spacing:0.08em;text-transform:uppercase}
+    .header-email{font-size:0.7rem;color:rgba(255,255,255,0.35)}
+    .btn-sair{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);font-size:0.78rem;font-family:'DM Sans',sans-serif;padding:7px 16px;border-radius:8px;cursor:pointer;transition:background 0.2s}
+    .btn-sair:hover{background:rgba(255,255,255,0.12);color:#fff}
+    .painel-body{display:flex;flex:1;overflow:hidden}
+    .sidebar{width:220px;background:var(--white);border-right:1px solid var(--border);padding:20px 12px;flex-shrink:0;display:flex;flex-direction:column;gap:2px}
+    .sidebar-label{font-size:0.68rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--gray-mid);padding:8px 12px 4px}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;font-size:0.88rem;color:var(--text);cursor:pointer;transition:background 0.15s;font-weight:400;border:none;background:none;width:100%;text-align:left}
+    .nav-item:hover{background:var(--gray)}
+    .nav-item.ativo{background:rgba(26,86,219,0.08);color:var(--blue);font-weight:600}
+    .nav-item .icon{font-size:16px}
+    .main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+    .aba{display:none;flex-direction:column;flex:1;overflow:hidden}
+    .aba.ativa{display:flex}
 
-    /* ── TELA DE LOGIN ── */
-    #tela-login {
-      display: flex;
-      height: 100vh;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      overflow: hidden;
-    }
+    .dash-body{flex:1;overflow-y:auto;padding:28px}
+    .dash-titulo{font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;color:var(--navy);margin-bottom:4px}
+    .dash-sub{font-size:0.85rem;color:var(--gray-mid);margin-bottom:24px}
+    .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:28px}
+    .stat-card{background:var(--white);border-radius:16px;padding:20px;border:1px solid var(--border)}
+    .stat-icon{font-size:20px;margin-bottom:10px}
+    .stat-num{font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;color:var(--navy)}
+    .stat-label{font-size:0.75rem;color:var(--gray-mid);margin-top:2px}
+    .hist-card{background:var(--white);border-radius:16px;padding:20px;border:1px solid var(--border)}
+    .hist-titulo{font-family:'Syne',sans-serif;font-size:0.95rem;font-weight:700;color:var(--navy);margin-bottom:16px}
+    .hist-item{padding:12px 0;border-bottom:1px solid var(--border)}
+    .hist-item:last-child{border-bottom:none}
+    .hist-pergunta{font-size:0.85rem;color:var(--text);margin-bottom:6px}
+    .hist-meta{display:flex;align-items:center;gap:10px;font-size:0.75rem;color:var(--gray-mid)}
+    .hist-econ{color:var(--green);font-weight:600}
+    .hist-risco{color:var(--red);font-weight:600}
+    .vazio{font-size:0.85rem;color:var(--gray-mid);text-align:center;padding:20px 0}
+    .dica-card{background:linear-gradient(135deg,var(--navy),#0D2A50);border-radius:16px;padding:24px;color:#fff;margin-top:20px}
+    .dica-card h3{font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin-bottom:8px}
+    .dica-card p{font-size:0.85rem;color:rgba(255,255,255,0.6);line-height:1.6}
+    .dica-btn{display:inline-block;margin-top:14px;background:linear-gradient(135deg,var(--blue),#1048b8);color:#fff;font-family:'Syne',sans-serif;font-weight:600;font-size:0.82rem;padding:9px 18px;border-radius:8px;border:none;cursor:pointer}
 
-    .login-bg {
-      position: absolute;
-      inset: 0;
-      background:
-        radial-gradient(ellipse 60% 60% at 20% 50%, rgba(26,86,219,0.2) 0%, transparent 65%),
-        radial-gradient(ellipse 50% 50% at 80% 30%, rgba(16,183,127,0.12) 0%, transparent 60%);
-    }
+    .chat-topbar{background:var(--navy);padding:12px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+    .chat-dots{display:flex;gap:5px}
+    .chat-dots span{width:10px;height:10px;border-radius:50%}
+    .dot-r{background:#FF5F57}.dot-y{background:#FFBD2E}.dot-g{background:#28C840}
+    .chat-title-bar{font-family:'Syne',sans-serif;font-size:0.82rem;color:rgba(255,255,255,0.6)}
+    .chat-online{margin-left:auto;font-size:0.72rem;color:var(--green);display:flex;align-items:center;gap:5px}
+    .chat-online::before{content:'';width:6px;height:6px;background:var(--green);border-radius:50%;animation:pulse 2s infinite}
+    .chat-mensagens{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px;background:var(--gray)}
+    .bolha{max-width:80%;padding:14px 18px;border-radius:16px;line-height:1.6;font-size:0.88rem}
+    .bolha-user{background:var(--blue);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+    .bolha-assistant{background:var(--white);color:var(--text);align-self:flex-start;border-bottom-left-radius:4px;border:1px solid var(--border)}
+    .bolha-assistant strong{color:var(--navy)}
+    .digitando{display:flex;gap:6px;align-items:center;padding:16px 20px}
+    .digitando span{width:8px;height:8px;background:var(--gray-mid);border-radius:50%;animation:bounce 1.2s infinite}
+    .digitando span:nth-child(2){animation-delay:0.2s}
+    .digitando span:nth-child(3){animation-delay:0.4s}
+    .chat-input-area{padding:16px 20px;background:var(--white);border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-end}
+    .chat-input{flex:1;border:1px solid var(--border);border-radius:12px;padding:12px 16px;font-size:0.9rem;font-family:'DM Sans',sans-serif;color:var(--text);resize:none;outline:none;max-height:120px;transition:border-color 0.2s;background:var(--gray)}
+    .chat-input:focus{border-color:var(--blue-l);background:var(--white)}
+    .btn-enviar{background:linear-gradient(135deg,var(--blue),#1048b8);color:#fff;border:none;border-radius:10px;padding:12px 20px;font-family:'Syne',sans-serif;font-weight:600;font-size:0.85rem;cursor:pointer;transition:opacity 0.2s,transform 0.2s;white-space:nowrap}
+    .btn-enviar:hover{opacity:0.9;transform:translateY(-1px)}
 
-    .login-grid {
-      position: absolute;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
-      background-size: 48px 48px;
-    }
+    .rel-body{flex:1;overflow-y:auto;padding:28px}
+    .rel-titulo-sec{font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;color:var(--navy);margin-bottom:24px}
+    #relatorio-conteudo{background:var(--white);border-radius:20px;border:1px solid var(--border);overflow:hidden}
+    .rel-header{background:linear-gradient(135deg,var(--navy),#0D2A50);padding:32px;color:#fff}
+    .rel-logo{font-size:0.85rem;color:rgba(255,255,255,0.5);margin-bottom:8px}
+    .rel-titulo{font-family:'Syne',sans-serif;font-size:1.5rem;font-weight:800;margin-bottom:4px}
+    .rel-empresa{font-size:0.9rem;color:rgba(255,255,255,0.6)}
+    .rel-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--border)}
+    .rel-card{background:var(--white);padding:24px 20px;text-align:center}
+    .rel-card.verde{background:#D1FAE5}
+    .rel-card.vermelho{background:#FEE2E2}
+    .rel-card.azul{background:#EFF6FF}
+    .rel-num{font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;color:var(--navy);margin-bottom:4px}
+    .rel-lbl{font-size:0.75rem;color:var(--gray-mid)}
+    .rel-sec{padding:24px 32px;border-top:1px solid var(--border)}
+    .rel-sec-titulo{font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;color:var(--navy);margin-bottom:16px}
+    .rel-tab{width:100%;border-collapse:collapse;font-size:0.85rem}
+    .rel-tab th{text-align:left;padding:10px 12px;background:var(--gray);color:var(--gray-mid);font-weight:600;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
+    .rel-tab td{padding:12px;border-bottom:1px solid var(--border);color:var(--text)}
+    .rel-analise{padding:12px 0;border-bottom:1px solid var(--border)}
+    .rel-analise:last-child{border-bottom:none}
+    .rel-analise-data{font-size:0.75rem;color:var(--gray-mid);margin-bottom:4px}
+    .rel-analise-texto{font-size:0.85rem;color:var(--text);margin-bottom:4px}
+    .rel-analise-econ{font-size:0.8rem;color:var(--green);font-weight:600}
+    .rel-rodape{padding:20px 32px;font-size:0.75rem;color:var(--gray-mid);text-align:center;border-top:1px solid var(--border);background:var(--gray)}
 
-    .login-card {
-      position: relative;
-      z-index: 2;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      backdrop-filter: blur(20px);
-      border-radius: 24px;
-      padding: 48px 44px;
-      width: 100%;
-      max-width: 420px;
-      animation: fadeUp 0.6s ease both;
-    }
-
-    .login-logo {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 36px;
-    }
-
-    .login-logo-icon {
-      width: 44px; height: 44px;
-      background: linear-gradient(135deg, var(--blue), var(--green));
-      border-radius: 12px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 22px;
-    }
-
-    .login-logo-text {
-      font-family: 'Syne', sans-serif;
-      font-weight: 700;
-      font-size: 1.15rem;
-      color: var(--white);
-      line-height: 1.1;
-    }
-
-    .login-logo-text span {
-      display: block;
-      font-size: 0.62rem;
-      font-weight: 400;
-      color: var(--green);
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-    }
-
-    .login-title {
-      font-family: 'Syne', sans-serif;
-      font-size: 1.6rem;
-      font-weight: 800;
-      color: var(--white);
-      margin-bottom: 6px;
-    }
-
-    .login-sub {
-      font-size: 0.88rem;
-      color: rgba(255,255,255,0.45);
-      margin-bottom: 32px;
-    }
-
-    .campo-label {
-      font-size: 0.8rem;
-      font-weight: 500;
-      color: rgba(255,255,255,0.6);
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      margin-bottom: 8px;
-      display: block;
-    }
-
-    .campo-input {
-      width: 100%;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 12px;
-      padding: 14px 18px;
-      font-size: 0.95rem;
-      color: var(--white);
-      font-family: 'DM Sans', sans-serif;
-      outline: none;
-      transition: border-color 0.2s, background 0.2s;
-      margin-bottom: 20px;
-    }
-
-    .campo-input:focus {
-      border-color: var(--blue-light);
-      background: rgba(255,255,255,0.09);
-    }
-
-    .campo-input::placeholder { color: rgba(255,255,255,0.25); }
-
-    .btn-login {
-      width: 100%;
-      background: linear-gradient(135deg, var(--blue), #1048b8);
-      color: var(--white);
-      font-family: 'Syne', sans-serif;
-      font-weight: 700;
-      font-size: 1rem;
-      padding: 16px;
-      border: none;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: opacity 0.2s, transform 0.2s;
-      box-shadow: 0 8px 24px rgba(26,86,219,0.4);
-      margin-top: 4px;
-    }
-
-    .btn-login:hover { opacity: 0.9; transform: translateY(-1px); }
-    .btn-login:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-
-    .erro-login {
-      display: none;
-      background: rgba(239,68,68,0.12);
-      border: 1px solid rgba(239,68,68,0.3);
-      color: #FCA5A5;
-      font-size: 0.85rem;
-      padding: 12px 16px;
-      border-radius: 10px;
-      margin-top: 16px;
-      text-align: center;
-    }
-
-    .login-footer {
-      margin-top: 28px;
-      text-align: center;
-      font-size: 0.78rem;
-      color: rgba(255,255,255,0.25);
-    }
-
-    /* ── TELA DO PAINEL ── */
-    #tela-painel {
-      display: none;
-      flex-direction: column;
-      height: 100vh;
-      background: var(--gray);
-    }
-
-    .painel-header {
-      background: var(--navy);
-      padding: 0 24px;
-      height: 60px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-shrink: 0;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-    }
-
-    .painel-logo {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .painel-logo-icon {
-      width: 32px; height: 32px;
-      background: linear-gradient(135deg, var(--blue), var(--green));
-      border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 16px;
-    }
-
-    .painel-logo-text {
-      font-family: 'Syne', sans-serif;
-      font-weight: 700;
-      font-size: 0.95rem;
-      color: var(--white);
-    }
-
-    .painel-user {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .painel-empresa-info {
-      text-align: right;
-    }
-
-    .painel-empresa-nome {
-      font-family: 'Syne', sans-serif;
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: var(--white);
-    }
-
-    .painel-empresa-plano {
-      font-size: 0.7rem;
-      color: var(--green);
-      font-weight: 500;
-    }
-
-    .painel-email {
-      font-size: 0.72rem;
-      color: rgba(255,255,255,0.35);
-    }
-
-    .btn-sair {
-      background: rgba(255,255,255,0.07);
-      border: 1px solid rgba(255,255,255,0.1);
-      color: rgba(255,255,255,0.6);
-      font-size: 0.78rem;
-      font-family: 'DM Sans', sans-serif;
-      padding: 7px 16px;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .btn-sair:hover { background: rgba(255,255,255,0.12); color: var(--white); }
-
-    .painel-body {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-    }
-
-    .painel-sidebar {
-      width: 240px;
-      background: var(--white);
-      border-right: 1px solid rgba(11,31,58,0.08);
-      padding: 20px 16px;
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .sidebar-label {
-      font-size: 0.68rem;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--gray-mid);
-      padding: 8px 12px 4px;
-    }
-
-    .sidebar-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      font-size: 0.88rem;
-      color: var(--text);
-      cursor: pointer;
-      transition: background 0.15s;
-      font-weight: 400;
-      border: none;
-      background: none;
-      width: 100%;
-      text-align: left;
-    }
-
-    .sidebar-item:hover { background: var(--gray); }
-    .sidebar-item.ativo { background: rgba(26,86,219,0.08); color: var(--blue); font-weight: 600; }
-    .sidebar-item .icon { font-size: 16px; }
-
-    .painel-main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    /* ABAS */
-    .aba { display: none; flex-direction: column; flex: 1; overflow: hidden; }
-    .aba.ativa { display: flex; }
-
-    /* ABA CHAT */
-    .chat-topbar {
-      background: var(--navy);
-      padding: 12px 20px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-shrink: 0;
-    }
-
-    .chat-dots { display: flex; gap: 5px; }
-    .chat-dots span { width: 10px; height: 10px; border-radius: 50%; }
-    .dot-r { background: #FF5F57; }
-    .dot-y { background: #FFBD2E; }
-    .dot-g { background: #28C840; }
-
-    .chat-title-bar {
-      font-family: 'Syne', sans-serif;
-      font-size: 0.82rem;
-      color: rgba(255,255,255,0.6);
-    }
-
-    .chat-online {
-      margin-left: auto;
-      font-size: 0.72rem;
-      color: var(--green);
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .chat-online::before {
-      content: '';
-      width: 6px; height: 6px;
-      background: var(--green);
-      border-radius: 50%;
-      animation: pulse 2s infinite;
-    }
-
-    .chat-iframe {
-      flex: 1;
-      border: none;
-      display: block;
-    }
-
-    /* ABA DASHBOARD */
-    .dash-content {
-      flex: 1;
-      overflow-y: auto;
-      padding: 32px;
-    }
-
-    .dash-titulo {
-      font-family: 'Syne', sans-serif;
-      font-size: 1.5rem;
-      font-weight: 800;
-      color: var(--navy);
-      margin-bottom: 6px;
-    }
-
-    .dash-sub {
-      font-size: 0.88rem;
-      color: var(--gray-mid);
-      margin-bottom: 28px;
-    }
-
-    .dash-cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
-      margin-bottom: 32px;
-    }
-
-    .dash-card {
-      background: var(--white);
-      border-radius: 16px;
-      padding: 24px 20px;
-      border: 1px solid rgba(11,31,58,0.07);
-    }
-
-    .dash-card-icon { font-size: 24px; margin-bottom: 12px; }
-
-    .dash-card-num {
-      font-family: 'Syne', sans-serif;
-      font-size: 1.8rem;
-      font-weight: 800;
-      color: var(--navy);
-    }
-
-    .dash-card-label {
-      font-size: 0.78rem;
-      color: var(--gray-mid);
-      margin-top: 2px;
-    }
-
-    .dash-dica {
-      background: linear-gradient(135deg, var(--navy), #0D2A50);
-      border-radius: 16px;
-      padding: 28px;
-      color: var(--white);
-    }
-
-    .dash-dica h3 {
-      font-family: 'Syne', sans-serif;
-      font-size: 1.05rem;
-      font-weight: 700;
-      margin-bottom: 10px;
-    }
-
-    .dash-dica p {
-      font-size: 0.88rem;
-      color: rgba(255,255,255,0.6);
-      line-height: 1.6;
-    }
-
-    .dash-dica-btn {
-      display: inline-block;
-      margin-top: 16px;
-      background: linear-gradient(135deg, var(--blue), #1048b8);
-      color: var(--white);
-      font-family: 'Syne', sans-serif;
-      font-weight: 600;
-      font-size: 0.85rem;
-      padding: 10px 20px;
-      border-radius: 8px;
-      border: none;
-      cursor: pointer;
-    }
-
-    /* ANIMATIONS */
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes pulse {
-      0%,100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-
-    /* RESPONSIVE */
-    @media (max-width: 640px) {
-      .painel-sidebar { display: none; }
-      .login-card { margin: 16px; padding: 36px 28px; }
-    }
+    @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+    @keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}
+    @media(max-width:640px){.sidebar{display:none}.login-card{margin:16px;padding:32px 24px}}
   </style>
 </head>
 <body>
 
-<!-- ══════════════════════════════════════
-     TELA DE LOGIN
-══════════════════════════════════════ -->
 <div id="tela-login">
-  <div class="login-bg"></div>
   <div class="login-grid"></div>
-
   <div class="login-card">
     <div class="login-logo">
       <div class="login-logo-icon">🧮</div>
-      <div class="login-logo-text">
-        Contábil Inteligente
-        <span>Área do Cliente</span>
-      </div>
+      <div class="login-logo-text">Contábil Inteligente<span>Área do Cliente</span></div>
     </div>
-
     <h1 class="login-title">Bem-vindo!</h1>
     <p class="login-sub">Acesse com o email e senha cadastrados</p>
-
     <label class="campo-label" for="email">Email</label>
     <input class="campo-input" type="email" id="email" placeholder="empresa@email.com" />
-
     <label class="campo-label" for="senha">Senha</label>
     <input class="campo-input" type="password" id="senha" placeholder="••••••••" onkeypress="enterLogin(event)" />
-
     <button class="btn-login" id="btn-login" onclick="fazerLogin()">Entrar</button>
-
-    <div class="erro-login" id="erro-login"></div>
-
-    <div class="login-footer">
-      Problemas de acesso? Entre em contato com o suporte.
-    </div>
+    <div class="erro" id="erro"></div>
+    <div class="login-footer">Problemas de acesso? Entre em contato com o suporte.</div>
   </div>
 </div>
 
-<!-- ══════════════════════════════════════
-     TELA DO PAINEL
-══════════════════════════════════════ -->
 <div id="tela-painel">
-
-  <!-- Header -->
-  <header class="painel-header">
-    <div class="painel-logo">
-      <div class="painel-logo-icon">🧮</div>
-      <div class="painel-logo-text">Contábil Inteligente</div>
+  <header class="header">
+    <div class="header-logo">
+      <div class="header-logo-icon">🧮</div>
+      <div class="header-logo-text">Contábil Inteligente</div>
     </div>
-    <div class="painel-user">
-      <div class="painel-empresa-info">
-        <div class="painel-empresa-nome" id="nome-empresa">Carregando...</div>
-        <div class="painel-empresa-plano" id="plano-empresa">Plano Básico</div>
-        <div class="painel-email" id="user-email"></div>
+    <div class="header-right">
+      <div class="header-info">
+        <div class="header-nome" id="nome-empresa">...</div>
+        <div class="header-plano" id="plano-tag">...</div>
+        <div class="header-email" id="user-email"></div>
       </div>
       <button class="btn-sair" onclick="fazerLogout()">Sair</button>
     </div>
   </header>
 
-  <!-- Body -->
   <div class="painel-body">
-
-    <!-- Sidebar -->
-    <aside class="painel-sidebar">
+    <aside class="sidebar">
       <div class="sidebar-label">Menu</div>
-      <button class="sidebar-item ativo" onclick="trocarAba('chat', this)">
-        <span class="icon">🤖</span> Analisar Documento
-      </button>
-      <button class="sidebar-item" onclick="trocarAba('dashboard', this)">
-        <span class="icon">📊</span> Resumo
-      </button>
+      <button class="nav-item ativo" onclick="trocarAba('dashboard',this)"><span class="icon">📊</span> Resumo</button>
+      <button class="nav-item" onclick="trocarAba('chat',this)"><span class="icon">🤖</span> Analisar</button>
+      <button class="nav-item" onclick="trocarAba('relatorio',this)"><span class="icon">📈</span> Relatório Mensal</button>
     </aside>
 
-    <!-- Main -->
-    <main class="painel-main">
-
-      <!-- Aba: Chat -->
-      <div class="aba ativa" id="aba-chat">
-        <div class="chat-topbar">
-          <div class="chat-dots">
-            <span class="dot-r"></span>
-            <span class="dot-y"></span>
-            <span class="dot-g"></span>
+    <main class="main">
+      <div class="aba ativa" id="aba-dashboard">
+        <div class="dash-body">
+          <h2 class="dash-titulo">Olá, <span id="dash-nome">Cliente</span>! 👋</h2>
+          <p class="dash-sub">Resumo do mês atual</p>
+          <div class="stats-grid">
+            <div class="stat-card"><div class="stat-icon">📄</div><div class="stat-num" id="stat-analises">0</div><div class="stat-label">Análises este mês</div></div>
+            <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num" id="stat-economia">R$ 0</div><div class="stat-label">Economia identificada</div></div>
+            <div class="stat-card"><div class="stat-icon">⚠️</div><div class="stat-num" id="stat-riscos">0</div><div class="stat-label">Riscos encontrados</div></div>
+            <div class="stat-card"><div class="stat-icon">📁</div><div class="stat-num" id="stat-total">0</div><div class="stat-label">Total histórico</div></div>
           </div>
-          <div class="chat-title-bar">IA Contábil — Envie sua nota fiscal ou documento</div>
+          <div class="hist-card">
+            <div class="hist-titulo">📋 Análises recentes</div>
+            <div id="historico-lista"><p class="vazio">Nenhuma análise ainda. Comece enviando um documento!</p></div>
+          </div>
+          <div class="dica-card">
+            <h3>💡 Como usar o sistema</h3>
+            <p>Vá em "Analisar", descreva ou cole o conteúdo da sua nota fiscal, boleto ou laudo. A IA extrai os dados, identifica economias e riscos fiscais automaticamente e salva tudo no seu histórico.</p>
+            <button class="dica-btn" onclick="trocarAba('chat',document.querySelectorAll('.nav-item')[1])">Começar análise →</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="aba" id="aba-chat">
+        <div class="chat-topbar">
+          <div class="chat-dots"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span></div>
+          <div class="chat-title-bar">IA Contábil — Cole os dados do documento ou faça sua pergunta</div>
           <div class="chat-online">Online</div>
         </div>
-        <iframe
-          class="chat-iframe"
-          src="https://udify.app/chat/d2nHDbJJajRmMsXt"
-          allow="microphone; camera"
-          title="Chat Contábil Inteligente">
-        </iframe>
-      </div>
-
-      <!-- Aba: Dashboard -->
-      <div class="aba" id="aba-dashboard">
-        <div class="dash-content">
-          <h2 class="dash-titulo">Olá, <span id="dash-nome">empresa</span>! 👋</h2>
-          <p class="dash-sub">Seu painel de eficiência fiscal</p>
-
-          <div class="dash-cards">
-            <div class="dash-card">
-              <div class="dash-card-icon">📄</div>
-              <div class="dash-card-num">0</div>
-              <div class="dash-card-label">Documentos analisados</div>
-            </div>
-            <div class="dash-card">
-              <div class="dash-card-icon">💰</div>
-              <div class="dash-card-num">R$ 0</div>
-              <div class="dash-card-label">Economia identificada</div>
-            </div>
-            <div class="dash-card">
-              <div class="dash-card-icon">⚠️</div>
-              <div class="dash-card-num">0</div>
-              <div class="dash-card-label">Riscos fiscais encontrados</div>
-            </div>
+        <div class="chat-mensagens" id="chat-mensagens">
+          <div class="bolha bolha-assistant">
+            <p>👋 Olá! Sou seu assistente contábil com IA.</p><br>
+            <p>Você pode me enviar dados de:</p>
+            <p>📄 Notas fiscais • 🌾 Laudos de solo</p>
+            <p>🐄 Insumos pecuários • 📊 Extratos e boletos</p><br>
+            <p>Cole o conteúdo ou descreva o documento!</p>
           </div>
-
-          <div class="dash-dica">
-            <h3>💡 Como aproveitar ao máximo</h3>
-            <p>Envie suas notas fiscais, boletos e extratos para a IA analisar. Ela identifica créditos de ICMS, PIS e COFINS, compara preços com o mercado de MT e aponta riscos fiscais — tudo em segundos.</p>
-            <button class="dash-dica-btn" onclick="trocarAba('chat', document.querySelector('.sidebar-item'))">Analisar agora →</button>
-          </div>
+        </div>
+        <div class="chat-input-area">
+          <textarea class="chat-input" id="chat-input" placeholder="Cole os dados da nota fiscal ou descreva o documento aqui..." rows="2" onkeypress="enterChat(event)"></textarea>
+          <button class="btn-enviar" onclick="enviarMensagem()">Enviar →</button>
         </div>
       </div>
 
+      <div class="aba" id="aba-relatorio">
+        <div class="rel-body">
+          <div class="rel-titulo-sec">📈 Relatório Mensal</div>
+          <div id="relatorio-conteudo">
+            <div style="padding:48px;text-align:center;color:var(--gray-mid)">
+              <div style="font-size:2rem;margin-bottom:12px">📊</div>
+              <p>Carregando relatório...</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 </div>
-
-<script>
-  function trocarAba(aba, btn) {
-    document.querySelectorAll('.aba').forEach(a => a.classList.remove('ativa'));
-    document.querySelectorAll('.sidebar-item').forEach(b => b.classList.remove('ativo'));
-    document.getElementById('aba-' + aba).classList.add('ativa');
-    btn.classList.add('ativo');
-
-    // Atualiza nome no dashboard
-    const nome = document.getElementById('nome-empresa').textContent;
-    document.getElementById('dash-nome').textContent = nome;
-  }
-</script>
 
 </body>
 </html>
