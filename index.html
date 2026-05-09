@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Contábil Inteligente | Área do Cliente</title>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -27,9 +27,17 @@
 
     window.APP = {
       user: null, empresa: {}, historico: [], conversa: [],
+      arquivosSelecionados: [],
       CLAUDE_KEY: "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"
     };
 
+    // Limite por plano
+    function getLimiteArquivos() {
+      const plano = (window.APP.empresa.plano || 'Básico').toLowerCase();
+      return plano.includes('plus') ? 6 : 2;
+    }
+
+    // ── AUTH ──
     window.fazerLogin = async () => {
       const email = document.getElementById('email').value;
       const senha = document.getElementById('senha').value;
@@ -56,10 +64,20 @@
         document.getElementById('plano-tag').textContent = window.APP.empresa.plano || 'Básico';
         document.getElementById('user-email').textContent = user.email;
         document.getElementById('dash-nome').textContent = window.APP.empresa.nomeEmpresa || 'Cliente';
+        atualizarLimitePlano();
         await carregarHistorico();
         mostrarPainel();
       } else { mostrarLogin(); }
     });
+
+    function atualizarLimitePlano() {
+      const limite = getLimiteArquivos();
+      const plano = window.APP.empresa.plano || 'Básico';
+      const el = document.getElementById('limite-info');
+      if (el) el.textContent = `Plano ${plano}: até ${limite} arquivos por análise`;
+      const input = document.getElementById('file-input');
+      if (input) input.setAttribute('multiple', true);
+    }
 
     function mostrarLogin() { document.getElementById('tela-login').style.display='flex'; document.getElementById('tela-painel').style.display='none'; }
     function mostrarPainel() { document.getElementById('tela-login').style.display='none'; document.getElementById('tela-painel').style.display='flex'; atualizarDashboard(); }
@@ -72,52 +90,172 @@
       if (aba === 'relatorio') gerarRelatorio();
     };
 
+    // ── UPLOAD DE ARQUIVOS ──
+    window.selecionarArquivos = () => { document.getElementById('file-input').click(); };
+
+    window.onArquivosSelecionados = (input) => {
+      const limite = getLimiteArquivos();
+      const files = Array.from(input.files).slice(0, limite);
+      if (input.files.length > limite) {
+        mostrarAviso(`Seu plano permite até ${limite} arquivos por vez. Os primeiros ${limite} foram selecionados.`);
+      }
+      window.APP.arquivosSelecionados = files;
+      atualizarPreviewArquivos();
+    };
+
+    function atualizarPreviewArquivos() {
+      const preview = document.getElementById('arquivos-preview');
+      const files = window.APP.arquivosSelecionados;
+      if (!files.length) { preview.innerHTML = ''; preview.style.display = 'none'; return; }
+      preview.style.display = 'flex';
+      preview.innerHTML = files.map((f, i) => `
+        <div class="arquivo-chip">
+          <span>${f.type.includes('pdf') ? '📄' : '🖼️'} ${f.name.substring(0,20)}${f.name.length>20?'...':''}</span>
+          <button onclick="removerArquivo(${i})">×</button>
+        </div>
+      `).join('');
+    }
+
+    window.removerArquivo = (idx) => {
+      window.APP.arquivosSelecionados.splice(idx, 1);
+      atualizarPreviewArquivos();
+    };
+
+    function mostrarAviso(msg) {
+      const aviso = document.getElementById('aviso-plano');
+      aviso.textContent = msg;
+      aviso.style.display = 'block';
+      setTimeout(() => aviso.style.display = 'none', 4000);
+    }
+
+    // ── Converter arquivo para base64 ──
+    function arquivoParaBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result.split(',')[1];
+          resolve({ base64, type: file.type, name: file.name });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // ── ENVIAR MENSAGEM COM OU SEM ARQUIVOS ──
     window.enviarMensagem = async () => {
       const input = document.getElementById('chat-input');
       const texto = input.value.trim();
-      if (!texto) return;
+      const arquivos = window.APP.arquivosSelecionados;
+
+      if (!texto && !arquivos.length) return;
+
       input.value = '';
-      adicionarBolha('user', texto);
-      window.APP.conversa.push({ role: 'user', content: texto });
+      const resumoArquivos = arquivos.length ? ` [${arquivos.length} arquivo(s) anexado(s)]` : '';
+      adicionarBolha('user', texto || 'Analisar documentos anexados' + resumoArquivos);
+
+      window.APP.arquivosSelecionados = [];
+      atualizarPreviewArquivos();
       mostrarDigitando(true);
+
       try {
+        // Montar conteúdo da mensagem
+        let conteudo = [];
+
+        // Adicionar arquivos
+        for (const file of arquivos) {
+          const { base64, type } = await arquivoParaBase64(file);
+          if (type === 'application/pdf') {
+            conteudo.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } });
+          } else {
+            const mediaType = type.includes('png') ? 'image/png' : type.includes('webp') ? 'image/webp' : 'image/jpeg';
+            conteudo.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
+          }
+        }
+
+        // Adicionar texto
+        if (texto) conteudo.push({ type: 'text', text: texto });
+        else conteudo.push({ type: 'text', text: 'Analise os documentos anexados e forneça a análise completa.' });
+
+        window.APP.conversa.push({ role: 'user', content: conteudo });
+
         const resp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': window.APP.CLAUDE_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-calls': 'true' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': window.APP.CLAUDE_KEY,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-calls': 'true'
+          },
           body: JSON.stringify({
-            model: 'claude-sonnet-4-6', max_tokens: 2048,
-            system: `Você é o Assistente Inteligente da Contábil Inteligente, especialista em análise financeira, fiscal e agronômica para Mato Grosso (até 350km de Cuiabá). Atende: Empresas, Produtores Rurais, Pecuaristas, Famílias Rurais e Agrônomos.
+            model: 'claude-sonnet-4-6',
+            max_tokens: 4096,
+            system: `Você é o Assistente Inteligente da Contábil Inteligente, especialista em análise financeira, fiscal e agronômica para Mato Grosso e região (até 350km de Cuiabá).
 
-AO RECEBER UM DOCUMENTO:
-1. IDENTIFIQUE o tipo e setor automaticamente
-2. EXTRAIA todos os dados relevantes
-3. ANALISE comparando com mercado de MT
-4. RESPONDA sempre com:
-✅ Análise Concluída
-📋 O que encontrei: (dados)
-💰 Economia ou Oportunidade: (valor estimado quando possível)
-⚠️ Atenção: (riscos fiscais)
-💡 Minha Recomendação: (próximo passo)
+Você atende 5 perfis: Empresas (todos setores), Produtores Rurais, Pecuaristas, Famílias Rurais e Agrônomos.
 
-Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite sempre a fonte.`,
+AO RECEBER IMAGENS OU PDFs DE DOCUMENTOS:
+1. IDENTIFIQUE automaticamente o tipo (NF, laudo de solo, receituário, extrato, boleto, recibo)
+2. EXTRAIA todos os dados relevantes de cada documento
+3. ANALISE comparando com mercado de MT e legislação vigente
+4. Se receber MÚLTIPLOS documentos, analise cada um separadamente e depois faça um resumo consolidado
+
+ESTRUTURA DA RESPOSTA:
+✅ Análise Concluída (X documento(s) analisado(s))
+
+Para cada documento:
+📋 Documento X — [tipo identificado]
+• Dados extraídos: data, emitente, CNPJ, produto/serviço, valor, impostos
+• 💰 Economia/Oportunidade: (valor estimado quando possível)
+• ⚠️ Risco Fiscal: (se houver)
+
+📊 Resumo Consolidado (quando múltiplos documentos):
+• Total analisado, total de economia identificada, principais riscos
+
+💡 Recomendações Práticas
+
+BASE DE CONHECIMENTO:
+- Tributário: RICMS-MT, legislação federal PIS/COFINS/IPI
+- Agronegócio: Embrapa, IMEA, MAPA, SENAR
+- Solo: Sistema Brasileiro de Classificação de Solos
+- Crédito rural: Pronaf, Pronamp, linhas BNDES
+
+Use português simples e direto. Sempre cite a fonte das informações técnicas.`,
             messages: window.APP.conversa
           })
         });
+
         const data = await resp.json();
+        if (data.error) throw new Error(data.error.message);
         const resposta = data.content[0].text;
         window.APP.conversa.push({ role: 'assistant', content: resposta });
         mostrarDigitando(false);
         adicionarBolha('assistant', resposta);
-        await salvarAnalise(texto, resposta);
+        await salvarAnalise(texto || 'Análise de documentos', resposta, arquivos.length);
         await carregarHistorico();
         atualizarDashboard();
+
       } catch(e) {
         mostrarDigitando(false);
-        adicionarBolha('assistant', '⚠️ Erro ao conectar com a IA. Verifique a chave de API no código.');
+        adicionarBolha('assistant', `⚠️ Erro: ${e.message || 'Verifique sua conexão e tente novamente.'}`);
       }
     };
 
     window.enterChat = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.enviarMensagem(); } };
+
+    // ── DRAG AND DROP ──
+    window.onDragOver = (e) => { e.preventDefault(); document.getElementById('drop-zone').classList.add('drag-over'); };
+    window.onDragLeave = () => { document.getElementById('drop-zone').classList.remove('drag-over'); };
+    window.onDrop = (e) => {
+      e.preventDefault();
+      document.getElementById('drop-zone').classList.remove('drag-over');
+      const limite = getLimiteArquivos();
+      const files = Array.from(e.dataTransfer.files).filter(f =>
+        f.type.startsWith('image/') || f.type === 'application/pdf'
+      ).slice(0, limite);
+      if (!files.length) { mostrarAviso('Apenas imagens e PDFs são aceitos.'); return; }
+      window.APP.arquivosSelecionados = [...window.APP.arquivosSelecionados, ...files].slice(0, limite);
+      atualizarPreviewArquivos();
+    };
 
     function adicionarBolha(tipo, texto) {
       const chat = document.getElementById('chat-mensagens');
@@ -141,7 +279,8 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
       } else if (!show && el) el.remove();
     }
 
-    async function salvarAnalise(pergunta, resposta) {
+    // ── FIREBASE ──
+    async function salvarAnalise(pergunta, resposta, numArquivos) {
       if (!window.APP.user) return;
       try {
         const matchEcon = resposta.match(/R\$\s*([\d.,]+)/);
@@ -149,9 +288,12 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
         await addDoc(collection(db, "analises"), {
           uid: window.APP.user.uid,
           empresa: window.APP.empresa.nomeEmpresa || '',
+          plano: window.APP.empresa.plano || 'Básico',
           pergunta: pergunta.substring(0,200),
           resposta: resposta.substring(0,2000),
-          economia, temRisco: resposta.includes('⚠️') || resposta.toLowerCase().includes('risco'),
+          numArquivos: numArquivos || 0,
+          economia,
+          temRisco: resposta.includes('⚠️') || resposta.toLowerCase().includes('risco fiscal'),
           data: new Date().toISOString(),
           mes: new Date().getMonth()+1,
           ano: new Date().getFullYear()
@@ -174,10 +316,11 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
       const mes = hist.filter(a => a.mes===agora.getMonth()+1 && a.ano===agora.getFullYear());
       const econ = mes.reduce((s,a) => s+(a.economia||0), 0);
       const riscos = mes.filter(a => a.temRisco).length;
+      const docs = mes.reduce((s,a) => s+(a.numArquivos||0), 0);
       document.getElementById('stat-analises').textContent = mes.length;
       document.getElementById('stat-economia').textContent = econ > 0 ? `R$ ${econ.toLocaleString('pt-BR')}` : 'R$ 0';
       document.getElementById('stat-riscos').textContent = riscos;
-      document.getElementById('stat-total').textContent = hist.length;
+      document.getElementById('stat-docs').textContent = docs;
       const lista = document.getElementById('historico-lista');
       if (lista) {
         lista.innerHTML = hist.slice(0,5).map(a => `
@@ -185,6 +328,7 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
             <div class="hist-pergunta">${a.pergunta.substring(0,80)}...</div>
             <div class="hist-meta">
               <span>${new Date(a.data).toLocaleDateString('pt-BR')}</span>
+              ${a.numArquivos>0?`<span>📎 ${a.numArquivos} arquivo(s)</span>`:''}
               ${a.economia>0?`<span class="hist-econ">💰 R$ ${a.economia.toLocaleString('pt-BR')}</span>`:''}
               ${a.temRisco?`<span class="hist-risco">⚠️ Risco</span>`:''}
             </div>
@@ -200,39 +344,41 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
       const mesAtual = hist.filter(a => a.mes===agora.getMonth()+1 && a.ano===agora.getFullYear());
       const totalEcon = mesAtual.reduce((s,a) => s+(a.economia||0), 0);
       const riscos = mesAtual.filter(a => a.temRisco).length;
+      const totalDocs = mesAtual.reduce((s,a) => s+(a.numArquivos||0), 0);
       const porMes = {};
       hist.forEach(a => {
         const k = `${a.ano}-${String(a.mes).padStart(2,'0')}`;
-        if (!porMes[k]) porMes[k] = {analises:0,economia:0,riscos:0};
-        porMes[k].analises++; porMes[k].economia += a.economia||0;
+        if (!porMes[k]) porMes[k] = {analises:0,economia:0,riscos:0,docs:0};
+        porMes[k].analises++; porMes[k].economia+=a.economia||0;
+        porMes[k].docs+=a.numArquivos||0;
         if (a.temRisco) porMes[k].riscos++;
       });
       document.getElementById('relatorio-conteudo').innerHTML = `
         <div class="rel-header">
           <div class="rel-logo">🧮 Contábil Inteligente</div>
           <div class="rel-titulo">Relatório Mensal — ${meses[agora.getMonth()]} ${agora.getFullYear()}</div>
-          <div class="rel-empresa">${window.APP.empresa.nomeEmpresa||'Cliente'}</div>
+          <div class="rel-empresa">${window.APP.empresa.nomeEmpresa||'Cliente'} • Plano ${window.APP.empresa.plano||'Básico'}</div>
         </div>
         <div class="rel-cards">
           <div class="rel-card"><div class="rel-num">${mesAtual.length}</div><div class="rel-lbl">Análises realizadas</div></div>
+          <div class="rel-card"><div class="rel-num">${totalDocs}</div><div class="rel-lbl">Documentos analisados</div></div>
           <div class="rel-card verde"><div class="rel-num">R$ ${totalEcon.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div><div class="rel-lbl">Economia identificada</div></div>
           <div class="rel-card ${riscos>0?'vermelho':''}"><div class="rel-num">${riscos}</div><div class="rel-lbl">Riscos fiscais</div></div>
-          <div class="rel-card azul"><div class="rel-num">${hist.length}</div><div class="rel-lbl">Total histórico</div></div>
         </div>
         <div class="rel-sec">
           <div class="rel-sec-titulo">📊 Histórico por mês</div>
-          <table class="rel-tab"><thead><tr><th>Mês</th><th>Análises</th><th>Economia</th><th>Riscos</th></tr></thead><tbody>
+          <table class="rel-tab"><thead><tr><th>Mês</th><th>Análises</th><th>Documentos</th><th>Economia</th><th>Riscos</th></tr></thead><tbody>
             ${Object.entries(porMes).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6).map(([k,d])=>{
               const [ano,m]=k.split('-');
-              return `<tr><td>${meses[parseInt(m)-1]} ${ano}</td><td>${d.analises}</td><td>R$ ${d.economia.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td>${d.riscos>0?`⚠️ ${d.riscos}`:'✅ 0'}</td></tr>`;
-            }).join('')||'<tr><td colspan="4" style="text-align:center;color:#999">Nenhum dado ainda</td></tr>'}
+              return `<tr><td>${meses[parseInt(m)-1]} ${ano}</td><td>${d.analises}</td><td>${d.docs}</td><td>R$ ${d.economia.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td>${d.riscos>0?`⚠️ ${d.riscos}`:'✅ 0'}</td></tr>`;
+            }).join('')||'<tr><td colspan="5" style="text-align:center;color:#999">Nenhum dado ainda</td></tr>'}
           </tbody></table>
         </div>
         <div class="rel-sec">
           <div class="rel-sec-titulo">📋 Últimas análises do mês</div>
           ${mesAtual.slice(0,5).map(a=>`
             <div class="rel-analise">
-              <div class="rel-analise-data">${new Date(a.data).toLocaleDateString('pt-BR')}</div>
+              <div class="rel-analise-data">${new Date(a.data).toLocaleDateString('pt-BR')} ${a.numArquivos>0?`• 📎 ${a.numArquivos} arquivo(s)`:''}</div>
               <div class="rel-analise-texto">${a.pergunta.substring(0,120)}...</div>
               ${a.economia>0?`<div class="rel-analise-econ">💰 R$ ${a.economia.toLocaleString('pt-BR')}</div>`:''}
             </div>`).join('')||'<p style="color:#999;text-align:center;padding:20px">Nenhuma análise este mês.</p>'}
@@ -246,6 +392,7 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
     :root{--navy:#0B1F3A;--blue:#1A56DB;--blue-l:#3B82F6;--green:#10B77F;--red:#EF4444;--gray:#F4F6FA;--gray-mid:#8A97B0;--border:rgba(11,31,58,0.08);--white:#FFFFFF;--text:#1C2B40}
     html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--text);overflow:hidden}
 
+    /* LOGIN */
     #tela-login{display:flex;height:100vh;align-items:center;justify-content:center;background:linear-gradient(160deg,#0B1F3A 0%,#0D2A50 60%,#0B3D2E 100%);position:relative;overflow:hidden}
     #tela-login::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 60% at 20% 50%,rgba(26,86,219,0.2) 0%,transparent 65%),radial-gradient(ellipse 50% 50% at 80% 30%,rgba(16,183,127,0.12) 0%,transparent 60%)}
     .login-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px);background-size:48px 48px}
@@ -266,6 +413,7 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
     .erro{display:none;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#FCA5A5;font-size:0.85rem;padding:12px 16px;border-radius:10px;margin-top:16px;text-align:center}
     .login-footer{margin-top:28px;text-align:center;font-size:0.78rem;color:rgba(255,255,255,0.25)}
 
+    /* PAINEL */
     #tela-painel{display:none;flex-direction:column;height:100vh;background:var(--gray)}
     .header{background:var(--navy);padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.06)}
     .header-logo{display:flex;align-items:center;gap:10px}
@@ -276,7 +424,7 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
     .header-nome{font-family:'Syne',sans-serif;font-size:0.85rem;font-weight:700;color:#fff}
     .header-plano{font-size:0.68rem;color:var(--green);font-weight:600;letter-spacing:0.08em;text-transform:uppercase}
     .header-email{font-size:0.7rem;color:rgba(255,255,255,0.35)}
-    .btn-sair{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);font-size:0.78rem;font-family:'DM Sans',sans-serif;padding:7px 16px;border-radius:8px;cursor:pointer;transition:background 0.2s}
+    .btn-sair{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);font-size:0.78rem;padding:7px 16px;border-radius:8px;cursor:pointer;transition:background 0.2s;font-family:'DM Sans',sans-serif}
     .btn-sair:hover{background:rgba(255,255,255,0.12);color:#fff}
     .painel-body{display:flex;flex:1;overflow:hidden}
     .sidebar{width:220px;background:var(--white);border-right:1px solid var(--border);padding:20px 12px;flex-shrink:0;display:flex;flex-direction:column;gap:2px}
@@ -289,6 +437,7 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
     .aba{display:none;flex-direction:column;flex:1;overflow:hidden}
     .aba.ativa{display:flex}
 
+    /* DASHBOARD */
     .dash-body{flex:1;overflow-y:auto;padding:28px}
     .dash-titulo{font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;color:var(--navy);margin-bottom:4px}
     .dash-sub{font-size:0.85rem;color:var(--gray-mid);margin-bottom:24px}
@@ -302,7 +451,7 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
     .hist-item{padding:12px 0;border-bottom:1px solid var(--border)}
     .hist-item:last-child{border-bottom:none}
     .hist-pergunta{font-size:0.85rem;color:var(--text);margin-bottom:6px}
-    .hist-meta{display:flex;align-items:center;gap:10px;font-size:0.75rem;color:var(--gray-mid)}
+    .hist-meta{display:flex;align-items:center;gap:10px;font-size:0.75rem;color:var(--gray-mid);flex-wrap:wrap}
     .hist-econ{color:var(--green);font-weight:600}
     .hist-risco{color:var(--red);font-weight:600}
     .vazio{font-size:0.85rem;color:var(--gray-mid);text-align:center;padding:20px 0}
@@ -311,6 +460,7 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
     .dica-card p{font-size:0.85rem;color:rgba(255,255,255,0.6);line-height:1.6}
     .dica-btn{display:inline-block;margin-top:14px;background:linear-gradient(135deg,var(--blue),#1048b8);color:#fff;font-family:'Syne',sans-serif;font-weight:600;font-size:0.82rem;padding:9px 18px;border-radius:8px;border:none;cursor:pointer}
 
+    /* CHAT */
     .chat-topbar{background:var(--navy);padding:12px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0}
     .chat-dots{display:flex;gap:5px}
     .chat-dots span{width:10px;height:10px;border-radius:50%}
@@ -319,7 +469,7 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
     .chat-online{margin-left:auto;font-size:0.72rem;color:var(--green);display:flex;align-items:center;gap:5px}
     .chat-online::before{content:'';width:6px;height:6px;background:var(--green);border-radius:50%;animation:pulse 2s infinite}
     .chat-mensagens{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px;background:var(--gray)}
-    .bolha{max-width:80%;padding:14px 18px;border-radius:16px;line-height:1.6;font-size:0.88rem}
+    .bolha{max-width:82%;padding:14px 18px;border-radius:16px;line-height:1.6;font-size:0.88rem}
     .bolha-user{background:var(--blue);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
     .bolha-assistant{background:var(--white);color:var(--text);align-self:flex-start;border-bottom-left-radius:4px;border:1px solid var(--border)}
     .bolha-assistant strong{color:var(--navy)}
@@ -327,12 +477,30 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
     .digitando span{width:8px;height:8px;background:var(--gray-mid);border-radius:50%;animation:bounce 1.2s infinite}
     .digitando span:nth-child(2){animation-delay:0.2s}
     .digitando span:nth-child(3){animation-delay:0.4s}
-    .chat-input-area{padding:16px 20px;background:var(--white);border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-end}
-    .chat-input{flex:1;border:1px solid var(--border);border-radius:12px;padding:12px 16px;font-size:0.9rem;font-family:'DM Sans',sans-serif;color:var(--text);resize:none;outline:none;max-height:120px;transition:border-color 0.2s;background:var(--gray)}
-    .chat-input:focus{border-color:var(--blue-l);background:var(--white)}
-    .btn-enviar{background:linear-gradient(135deg,var(--blue),#1048b8);color:#fff;border:none;border-radius:10px;padding:12px 20px;font-family:'Syne',sans-serif;font-weight:600;font-size:0.85rem;cursor:pointer;transition:opacity 0.2s,transform 0.2s;white-space:nowrap}
-    .btn-enviar:hover{opacity:0.9;transform:translateY(-1px)}
 
+    /* DROP ZONE */
+    .drop-zone{border:2px dashed var(--border);border-radius:12px;padding:16px;text-align:center;cursor:pointer;transition:all 0.2s;background:var(--white);margin:12px 20px 0}
+    .drop-zone.drag-over{border-color:var(--blue);background:rgba(26,86,219,0.04)}
+    .drop-zone p{font-size:0.82rem;color:var(--gray-mid)}
+    .drop-zone strong{color:var(--blue);cursor:pointer}
+    .limite-info{font-size:0.72rem;color:var(--gray-mid);margin-top:4px}
+
+    /* ARQUIVOS PREVIEW */
+    #arquivos-preview{display:none;flex-wrap:wrap;gap:8px;padding:8px 20px}
+    .arquivo-chip{display:flex;align-items:center;gap:6px;background:rgba(26,86,219,0.08);border:1px solid rgba(26,86,219,0.2);border-radius:8px;padding:5px 10px;font-size:0.78rem;color:var(--blue)}
+    .arquivo-chip button{background:none;border:none;color:var(--blue);cursor:pointer;font-size:1rem;line-height:1;padding:0 2px}
+
+    /* AVISO PLANO */
+    #aviso-plano{display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--red);font-size:0.8rem;padding:8px 16px;margin:0 20px;border-radius:8px;text-align:center}
+
+    .chat-input-area{padding:12px 20px 16px;background:var(--white);border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-end}
+    .chat-input{flex:1;border:1px solid var(--border);border-radius:12px;padding:12px 16px;font-size:0.9rem;font-family:'DM Sans',sans-serif;color:var(--text);resize:none;outline:none;max-height:100px;transition:border-color 0.2s;background:var(--gray)}
+    .chat-input:focus{border-color:var(--blue-l);background:var(--white)}
+    .btn-enviar{background:linear-gradient(135deg,var(--blue),#1048b8);color:#fff;border:none;border-radius:10px;padding:12px 20px;font-family:'Syne',sans-serif;font-weight:600;font-size:0.85rem;cursor:pointer;transition:opacity 0.2s;white-space:nowrap}
+    .btn-enviar:hover{opacity:0.9}
+    input[type=file]{display:none}
+
+    /* RELATÓRIO */
     .rel-body{flex:1;overflow-y:auto;padding:28px}
     .rel-titulo-sec{font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;color:var(--navy);margin-bottom:24px}
     #relatorio-conteudo{background:var(--white);border-radius:20px;border:1px solid var(--border);overflow:hidden}
@@ -344,7 +512,6 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
     .rel-card{background:var(--white);padding:24px 20px;text-align:center}
     .rel-card.verde{background:#D1FAE5}
     .rel-card.vermelho{background:#FEE2E2}
-    .rel-card.azul{background:#EFF6FF}
     .rel-num{font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;color:var(--navy);margin-bottom:4px}
     .rel-lbl{font-size:0.75rem;color:var(--gray-mid)}
     .rel-sec{padding:24px 32px;border-top:1px solid var(--border)}
@@ -367,6 +534,7 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
 </head>
 <body>
 
+<!-- LOGIN -->
 <div id="tela-login">
   <div class="login-grid"></div>
   <div class="login-card">
@@ -386,6 +554,7 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
   </div>
 </div>
 
+<!-- PAINEL -->
 <div id="tela-painel">
   <header class="header">
     <div class="header-logo">
@@ -411,49 +580,74 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
     </aside>
 
     <main class="main">
+
+      <!-- DASHBOARD -->
       <div class="aba ativa" id="aba-dashboard">
         <div class="dash-body">
           <h2 class="dash-titulo">Olá, <span id="dash-nome">Cliente</span>! 👋</h2>
           <p class="dash-sub">Resumo do mês atual</p>
           <div class="stats-grid">
-            <div class="stat-card"><div class="stat-icon">📄</div><div class="stat-num" id="stat-analises">0</div><div class="stat-label">Análises este mês</div></div>
+            <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-num" id="stat-analises">0</div><div class="stat-label">Análises este mês</div></div>
+            <div class="stat-card"><div class="stat-icon">📎</div><div class="stat-num" id="stat-docs">0</div><div class="stat-label">Documentos analisados</div></div>
             <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num" id="stat-economia">R$ 0</div><div class="stat-label">Economia identificada</div></div>
             <div class="stat-card"><div class="stat-icon">⚠️</div><div class="stat-num" id="stat-riscos">0</div><div class="stat-label">Riscos encontrados</div></div>
-            <div class="stat-card"><div class="stat-icon">📁</div><div class="stat-num" id="stat-total">0</div><div class="stat-label">Total histórico</div></div>
           </div>
           <div class="hist-card">
             <div class="hist-titulo">📋 Análises recentes</div>
             <div id="historico-lista"><p class="vazio">Nenhuma análise ainda. Comece enviando um documento!</p></div>
           </div>
           <div class="dica-card">
-            <h3>💡 Como usar o sistema</h3>
-            <p>Vá em "Analisar", descreva ou cole o conteúdo da sua nota fiscal, boleto ou laudo. A IA extrai os dados, identifica economias e riscos fiscais automaticamente e salva tudo no seu histórico.</p>
+            <h3>💡 Como usar</h3>
+            <p>Vá em "Analisar", anexe suas notas fiscais, laudos ou PDFs — ou cole o texto diretamente. A IA analisa tudo e salva no histórico automaticamente.</p>
             <button class="dica-btn" onclick="trocarAba('chat',document.querySelectorAll('.nav-item')[1])">Começar análise →</button>
           </div>
         </div>
       </div>
 
+      <!-- CHAT -->
       <div class="aba" id="aba-chat">
         <div class="chat-topbar">
           <div class="chat-dots"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span></div>
-          <div class="chat-title-bar">IA Contábil — Cole os dados do documento ou faça sua pergunta</div>
+          <div class="chat-title-bar">IA Contábil — Anexe documentos ou cole o texto</div>
           <div class="chat-online">Online</div>
         </div>
+
         <div class="chat-mensagens" id="chat-mensagens">
           <div class="bolha bolha-assistant">
             <p>👋 Olá! Sou seu assistente contábil com IA.</p><br>
-            <p>Você pode me enviar dados de:</p>
-            <p>📄 Notas fiscais • 🌾 Laudos de solo</p>
-            <p>🐄 Insumos pecuários • 📊 Extratos e boletos</p><br>
-            <p>Cole o conteúdo ou descreva o documento!</p>
+            <p>Envie seus documentos para análise:</p>
+            <p>📄 Notas fiscais (foto ou PDF)</p>
+            <p>🌾 Laudos de análise de solo (PDF)</p>
+            <p>🐄 Faturas de insumos pecuários</p>
+            <p>📊 Extratos e boletos</p><br>
+            <p>Arraste arquivos ou clique em "Anexar" abaixo!</p>
           </div>
         </div>
+
+        <!-- Drop Zone -->
+        <div class="drop-zone" id="drop-zone"
+          ondragover="onDragOver(event)" ondragleave="onDragLeave()" ondrop="onDrop(event)"
+          onclick="selecionarArquivos()">
+          <p>📎 <strong>Clique para anexar</strong> ou arraste arquivos aqui</p>
+          <p class="limite-info" id="limite-info">Imagens (JPG, PNG) e PDFs aceitos</p>
+        </div>
+
+        <!-- Preview arquivos -->
+        <div id="arquivos-preview"></div>
+
+        <!-- Aviso plano -->
+        <div id="aviso-plano"></div>
+
+        <!-- Input file oculto -->
+        <input type="file" id="file-input" accept="image/*,.pdf" multiple onchange="onArquivosSelecionados(this)" />
+
         <div class="chat-input-area">
-          <textarea class="chat-input" id="chat-input" placeholder="Cole os dados da nota fiscal ou descreva o documento aqui..." rows="2" onkeypress="enterChat(event)"></textarea>
+          <textarea class="chat-input" id="chat-input" placeholder="Adicione instruções ou cole dados aqui (opcional)..." rows="2" onkeypress="enterChat(event)"></textarea>
           <button class="btn-enviar" onclick="enviarMensagem()">Enviar →</button>
         </div>
       </div>
 
+      <!-- RELATÓRIO -->
       <div class="aba" id="aba-relatorio">
         <div class="rel-body">
           <div class="rel-titulo-sec">📈 Relatório Mensal</div>
@@ -465,6 +659,7 @@ Use português simples. Baseie-se em: Embrapa, MAPA, SENAR, IMEA, RICMS-MT. Cite
           </div>
         </div>
       </div>
+
     </main>
   </div>
 </div>
