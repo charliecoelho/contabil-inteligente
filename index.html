@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contábil Inteligente | Área do Cliente</title>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <title>Contábil Inteligente | Plataforma de Análise Fiscal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -27,27 +27,24 @@
 
     window.APP = {
       user: null, empresa: {}, historico: [], conversa: [],
-      arquivosSelecionados: [],
+      arquivos: [],
       CLAUDE_KEY: "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"
     };
 
-    // Limite por plano
-    function getLimiteArquivos() {
-      const plano = (window.APP.empresa.plano || 'Básico').toLowerCase();
-      return plano.includes('plus') ? 6 : 2;
+    function getLimite() {
+      return (window.APP.empresa.plano||'').toLowerCase().includes('plus') ? 6 : 2;
     }
 
-    // ── AUTH ──
     window.fazerLogin = async () => {
       const email = document.getElementById('email').value;
       const senha = document.getElementById('senha').value;
       const btn = document.getElementById('btn-login');
       const erro = document.getElementById('erro');
       erro.style.display = 'none';
-      if (!email || !senha) { erro.textContent = 'Preencha email e senha.'; erro.style.display = 'block'; return; }
-      btn.disabled = true; btn.textContent = 'Entrando...';
+      if (!email || !senha) { erro.textContent = 'Preencha todos os campos.'; erro.style.display = 'block'; return; }
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Autenticando...';
       try { await signInWithEmailAndPassword(auth, email, senha); }
-      catch (e) { erro.textContent = 'Email ou senha incorretos.'; erro.style.display = 'block'; btn.disabled = false; btn.textContent = 'Entrar'; }
+      catch (e) { erro.textContent = 'Credenciais inválidas. Tente novamente.'; erro.style.display = 'block'; btn.disabled = false; btn.innerHTML = 'Acessar Plataforma'; }
     };
 
     window.fazerLogout = async () => { await signOut(auth); };
@@ -60,601 +57,834 @@
           const snap = await getDoc(doc(db, "clientes", user.uid));
           window.APP.empresa = snap.exists() ? snap.data() : { nomeEmpresa: user.email.split('@')[0], plano: 'Básico' };
         } catch(e) { window.APP.empresa = { nomeEmpresa: 'Cliente', plano: 'Básico' }; }
-        document.getElementById('nome-empresa').textContent = window.APP.empresa.nomeEmpresa || 'Cliente';
-        document.getElementById('plano-tag').textContent = window.APP.empresa.plano || 'Básico';
-        document.getElementById('user-email').textContent = user.email;
-        document.getElementById('dash-nome').textContent = window.APP.empresa.nomeEmpresa || 'Cliente';
-        atualizarLimitePlano();
+        const nome = window.APP.empresa.nomeEmpresa || 'Cliente';
+        const plano = window.APP.empresa.plano || 'Básico';
+        document.getElementById('hd-nome').textContent = nome;
+        document.getElementById('hd-plano').textContent = `Plano ${plano}`;
+        document.getElementById('hd-email').textContent = user.email;
+        document.getElementById('dash-nome').textContent = nome;
+        document.getElementById('limite-txt').textContent = `Plano ${plano} — até ${getLimite()} arquivo(s) por análise`;
         await carregarHistorico();
-        mostrarPainel();
-      } else { mostrarLogin(); }
+        document.getElementById('tela-login').style.display = 'none';
+        document.getElementById('tela-app').style.display = 'flex';
+        atualizarDashboard();
+      } else {
+        document.getElementById('tela-login').style.display = 'flex';
+        document.getElementById('tela-app').style.display = 'none';
+      }
     });
 
-    function atualizarLimitePlano() {
-      const limite = getLimiteArquivos();
-      const plano = window.APP.empresa.plano || 'Básico';
-      const el = document.getElementById('limite-info');
-      if (el) el.textContent = `Plano ${plano}: até ${limite} arquivos por análise`;
-      const input = document.getElementById('file-input');
-      if (input) input.setAttribute('multiple', true);
-    }
-
-    function mostrarLogin() { document.getElementById('tela-login').style.display='flex'; document.getElementById('tela-painel').style.display='none'; }
-    function mostrarPainel() { document.getElementById('tela-login').style.display='none'; document.getElementById('tela-painel').style.display='flex'; atualizarDashboard(); }
-
-    window.trocarAba = (aba, btn) => {
+    window.trocarAba = (aba, el) => {
       document.querySelectorAll('.aba').forEach(a => a.classList.remove('ativa'));
-      document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('ativo'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('ativo'));
       document.getElementById('aba-'+aba).classList.add('ativa');
-      if (btn) btn.classList.add('ativo');
+      el.classList.add('ativo');
       if (aba === 'relatorio') gerarRelatorio();
     };
 
-    // ── UPLOAD DE ARQUIVOS ──
-    window.selecionarArquivos = () => { document.getElementById('file-input').click(); };
+    window.selecionarArquivos = () => document.getElementById('file-input').click();
 
-    window.onArquivosSelecionados = (input) => {
-      const limite = getLimiteArquivos();
-      const files = Array.from(input.files).slice(0, limite);
-      if (input.files.length > limite) {
-        mostrarAviso(`Seu plano permite até ${limite} arquivos por vez. Os primeiros ${limite} foram selecionados.`);
-      }
-      window.APP.arquivosSelecionados = files;
-      atualizarPreviewArquivos();
+    window.onArquivos = (input) => {
+      const lim = getLimite();
+      const novos = Array.from(input.files).filter(f => f.type.startsWith('image/') || f.type==='application/pdf');
+      const total = [...window.APP.arquivos, ...novos].slice(0, lim);
+      if (window.APP.arquivos.length + novos.length > lim) mostrarNotif(`Limite de ${lim} arquivos para seu plano.`, 'warn');
+      window.APP.arquivos = total;
+      renderArquivos();
+      input.value = '';
     };
 
-    function atualizarPreviewArquivos() {
-      const preview = document.getElementById('arquivos-preview');
-      const files = window.APP.arquivosSelecionados;
-      if (!files.length) { preview.innerHTML = ''; preview.style.display = 'none'; return; }
-      preview.style.display = 'flex';
-      preview.innerHTML = files.map((f, i) => `
-        <div class="arquivo-chip">
-          <span>${f.type.includes('pdf') ? '📄' : '🖼️'} ${f.name.substring(0,20)}${f.name.length>20?'...':''}</span>
-          <button onclick="removerArquivo(${i})">×</button>
-        </div>
-      `).join('');
+    function renderArquivos() {
+      const el = document.getElementById('chips');
+      el.innerHTML = window.APP.arquivos.map((f,i) => `
+        <div class="chip">
+          <span>${f.type==='application/pdf'?'PDF':'IMG'}</span>
+          <span class="chip-nome">${f.name.length>18?f.name.substring(0,18)+'…':f.name}</span>
+          <button onclick="remArquivo(${i})">×</button>
+        </div>`).join('');
+      document.getElementById('chips-wrap').style.display = window.APP.arquivos.length ? 'flex' : 'none';
     }
 
-    window.removerArquivo = (idx) => {
-      window.APP.arquivosSelecionados.splice(idx, 1);
-      atualizarPreviewArquivos();
+    window.remArquivo = (i) => { window.APP.arquivos.splice(i,1); renderArquivos(); };
+
+    window.onDragOver = (e) => { e.preventDefault(); e.currentTarget.classList.add('drag'); };
+    window.onDragLeave = (e) => e.currentTarget.classList.remove('drag');
+    window.onDrop = (e) => {
+      e.preventDefault(); e.currentTarget.classList.remove('drag');
+      const lim = getLimite();
+      const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')||f.type==='application/pdf').slice(0,lim);
+      window.APP.arquivos = [...window.APP.arquivos, ...files].slice(0,lim);
+      renderArquivos();
     };
 
-    function mostrarAviso(msg) {
-      const aviso = document.getElementById('aviso-plano');
-      aviso.textContent = msg;
-      aviso.style.display = 'block';
-      setTimeout(() => aviso.style.display = 'none', 4000);
-    }
-
-    // ── Converter arquivo para base64 ──
-    function arquivoParaBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const base64 = reader.result.split(',')[1];
-          resolve({ base64, type: file.type, name: file.name });
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+    function b64(file) {
+      return new Promise((res,rej) => {
+        const r = new FileReader();
+        r.onload = () => res({ b64: r.result.split(',')[1], type: file.type, name: file.name });
+        r.onerror = rej;
+        r.readAsDataURL(file);
       });
     }
 
-    // ── ENVIAR MENSAGEM COM OU SEM ARQUIVOS ──
-    window.enviarMensagem = async () => {
-      const input = document.getElementById('chat-input');
-      const texto = input.value.trim();
-      const arquivos = window.APP.arquivosSelecionados;
+    window.enviar = async () => {
+      const txt = document.getElementById('chat-input').value.trim();
+      const arqs = [...window.APP.arquivos];
+      if (!txt && !arqs.length) return;
+      document.getElementById('chat-input').value = '';
+      window.APP.arquivos = []; renderArquivos();
 
-      if (!texto && !arquivos.length) return;
+      const preview = arqs.length ? ` [${arqs.length} arquivo(s)]` : '';
+      addMsg('user', txt || 'Analisar documentos anexados' + preview);
 
-      input.value = '';
-      const resumoArquivos = arquivos.length ? ` [${arquivos.length} arquivo(s) anexado(s)]` : '';
-      adicionarBolha('user', texto || 'Analisar documentos anexados' + resumoArquivos);
-
-      window.APP.arquivosSelecionados = [];
-      atualizarPreviewArquivos();
-      mostrarDigitando(true);
-
+      setTyping(true);
       try {
-        // Montar conteúdo da mensagem
-        let conteudo = [];
-
-        // Adicionar arquivos
-        for (const file of arquivos) {
-          const { base64, type } = await arquivoParaBase64(file);
-          if (type === 'application/pdf') {
-            conteudo.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } });
-          } else {
-            const mediaType = type.includes('png') ? 'image/png' : type.includes('webp') ? 'image/webp' : 'image/jpeg';
-            conteudo.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
-          }
+        let content = [];
+        for (const f of arqs) {
+          const {b64: data, type} = await b64(f);
+          if (type==='application/pdf') content.push({type:'document',source:{type:'base64',media_type:'application/pdf',data}});
+          else content.push({type:'image',source:{type:'base64',media_type:type.includes('png')?'image/png':'image/jpeg',data}});
         }
+        content.push({type:'text',text: txt || 'Analise os documentos anexados.'});
+        window.APP.conversa.push({role:'user',content});
 
-        // Adicionar texto
-        if (texto) conteudo.push({ type: 'text', text: texto });
-        else conteudo.push({ type: 'text', text: 'Analise os documentos anexados e forneça a análise completa.' });
-
-        window.APP.conversa.push({ role: 'user', content: conteudo });
-
-        const resp = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': window.APP.CLAUDE_KEY,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-calls': 'true'
-          },
+        const resp = await fetch('https://api.anthropic.com/v1/messages',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-api-key':window.APP.CLAUDE_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-calls':'true'},
           body: JSON.stringify({
-            model: 'claude-sonnet-4-6',
-            max_tokens: 4096,
-            system: `Você é o Assistente Inteligente da Contábil Inteligente, especialista em análise financeira, fiscal e agronômica para Mato Grosso e região (até 350km de Cuiabá).
+            model:'claude-sonnet-4-6', max_tokens:4096,
+            system:`Você é o Assistente Especializado da Contábil Inteligente, plataforma de análise fiscal e agronômica para empresas de Mato Grosso (até 350km de Cuiabá).
 
-Você atende 5 perfis: Empresas (todos setores), Produtores Rurais, Pecuaristas, Famílias Rurais e Agrônomos.
+PERFIS ATENDIDOS: Empresas (todos os setores), Produtores Rurais, Pecuaristas, Famílias Rurais, Agrônomos.
 
-AO RECEBER IMAGENS OU PDFs DE DOCUMENTOS:
-1. IDENTIFIQUE automaticamente o tipo (NF, laudo de solo, receituário, extrato, boleto, recibo)
-2. EXTRAIA todos os dados relevantes de cada documento
-3. ANALISE comparando com mercado de MT e legislação vigente
-4. Se receber MÚLTIPLOS documentos, analise cada um separadamente e depois faça um resumo consolidado
+PROTOCOLO DE ANÁLISE:
+1. IDENTIFICAR tipo de documento e setor
+2. EXTRAIR todos os dados relevantes
+3. ANALISAR com base em legislação e mercado de MT
+4. Para múltiplos documentos: analisar individualmente e consolidar
 
-ESTRUTURA DA RESPOSTA:
-✅ Análise Concluída (X documento(s) analisado(s))
+FORMATO DE RESPOSTA:
+━━━━━━━━━━━━━━━━━━━━━━
+✅ ANÁLISE CONCLUÍDA
+━━━━━━━━━━━━━━━━━━━━━━
 
-Para cada documento:
-📋 Documento X — [tipo identificado]
-• Dados extraídos: data, emitente, CNPJ, produto/serviço, valor, impostos
-• 💰 Economia/Oportunidade: (valor estimado quando possível)
-• ⚠️ Risco Fiscal: (se houver)
+[Para cada documento:]
+▸ Documento: [tipo e número]
+▸ Dados extraídos: [tabela com campos]
+▸ Situação fiscal: [normal/atenção/crítico]
+▸ Oportunidade identificada: [valor estimado]
 
-📊 Resumo Consolidado (quando múltiplos documentos):
-• Total analisado, total de economia identificada, principais riscos
+━━━━━━━━━━━━━━━━━━━━━━
+💰 RESUMO FINANCEIRO
+▸ Economia total identificada: R$ X.XXX,XX
+▸ Riscos fiscais: [quantidade e natureza]
 
-💡 Recomendações Práticas
+⚖️ RISCOS E ALERTAS
+[Lista de riscos com nível: BAIXO / MÉDIO / ALTO]
 
-BASE DE CONHECIMENTO:
-- Tributário: RICMS-MT, legislação federal PIS/COFINS/IPI
-- Agronegócio: Embrapa, IMEA, MAPA, SENAR
-- Solo: Sistema Brasileiro de Classificação de Solos
-- Crédito rural: Pronaf, Pronamp, linhas BNDES
+📌 RECOMENDAÇÕES
+[Ações práticas numeradas]
+━━━━━━━━━━━━━━━━━━━━━━
 
-Use português simples e direto. Sempre cite a fonte das informações técnicas.`,
+FONTES: RICMS-MT, legislação federal, Embrapa, IMEA, MAPA, SENAR. Sempre cite a fonte.
+TOM: Técnico, objetivo, corporativo. Português formal mas acessível.`,
             messages: window.APP.conversa
           })
         });
-
         const data = await resp.json();
         if (data.error) throw new Error(data.error.message);
         const resposta = data.content[0].text;
-        window.APP.conversa.push({ role: 'assistant', content: resposta });
-        mostrarDigitando(false);
-        adicionarBolha('assistant', resposta);
-        await salvarAnalise(texto || 'Análise de documentos', resposta, arquivos.length);
+        window.APP.conversa.push({role:'assistant',content:resposta});
+        setTyping(false);
+        addMsg('assistant', resposta);
+        await salvar(txt||'Análise de documentos', resposta, arqs.length);
         await carregarHistorico();
         atualizarDashboard();
-
       } catch(e) {
-        mostrarDigitando(false);
-        adicionarBolha('assistant', `⚠️ Erro: ${e.message || 'Verifique sua conexão e tente novamente.'}`);
+        setTyping(false);
+        addMsg('assistant', `⚠️ Erro ao processar: ${e.message}`);
       }
     };
 
-    window.enterChat = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.enviarMensagem(); } };
+    window.enterChat = (e) => { if (e.key==='Enter'&&!e.shiftKey){e.preventDefault();window.enviar();} };
 
-    // ── DRAG AND DROP ──
-    window.onDragOver = (e) => { e.preventDefault(); document.getElementById('drop-zone').classList.add('drag-over'); };
-    window.onDragLeave = () => { document.getElementById('drop-zone').classList.remove('drag-over'); };
-    window.onDrop = (e) => {
-      e.preventDefault();
-      document.getElementById('drop-zone').classList.remove('drag-over');
-      const limite = getLimiteArquivos();
-      const files = Array.from(e.dataTransfer.files).filter(f =>
-        f.type.startsWith('image/') || f.type === 'application/pdf'
-      ).slice(0, limite);
-      if (!files.length) { mostrarAviso('Apenas imagens e PDFs são aceitos.'); return; }
-      window.APP.arquivosSelecionados = [...window.APP.arquivosSelecionados, ...files].slice(0, limite);
-      atualizarPreviewArquivos();
-    };
-
-    function adicionarBolha(tipo, texto) {
-      const chat = document.getElementById('chat-mensagens');
-      const div = document.createElement('div');
-      div.className = `bolha bolha-${tipo}`;
-      div.innerHTML = tipo === 'assistant'
-        ? texto.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>')
-        : `<p>${texto}</p>`;
-      chat.appendChild(div);
+    function addMsg(tipo, txt) {
+      const chat = document.getElementById('chat-msgs');
+      const d = document.createElement('div');
+      d.className = `msg msg-${tipo}`;
+      const conteudo = tipo==='assistant'
+        ? txt.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/━+/g,'<hr class="sep">').replace(/\n/g,'<br>')
+        : `<p>${txt}</p>`;
+      d.innerHTML = tipo==='assistant'
+        ? `<div class="msg-avatar">CI</div><div class="msg-bubble">${conteudo}</div>`
+        : `<div class="msg-bubble">${conteudo}</div>`;
+      chat.appendChild(d);
       chat.scrollTop = chat.scrollHeight;
     }
 
-    function mostrarDigitando(show) {
-      let el = document.getElementById('digitando');
-      if (show && !el) {
+    function setTyping(on) {
+      let el = document.getElementById('typing');
+      if (on && !el) {
         el = document.createElement('div');
-        el.id = 'digitando'; el.className = 'bolha bolha-assistant digitando';
-        el.innerHTML = '<span></span><span></span><span></span>';
-        document.getElementById('chat-mensagens').appendChild(el);
-        document.getElementById('chat-mensagens').scrollTop = 99999;
-      } else if (!show && el) el.remove();
+        el.id = 'typing'; el.className = 'msg msg-assistant';
+        el.innerHTML = '<div class="msg-avatar">CI</div><div class="msg-bubble typing-bubble"><span></span><span></span><span></span></div>';
+        document.getElementById('chat-msgs').appendChild(el);
+        document.getElementById('chat-msgs').scrollTop = 99999;
+      } else if (!on && el) el.remove();
     }
 
-    // ── FIREBASE ──
-    async function salvarAnalise(pergunta, resposta, numArquivos) {
+    function mostrarNotif(msg, tipo='warn') {
+      const n = document.getElementById('notif');
+      n.textContent = msg; n.className = `notif notif-${tipo}`;
+      n.style.display = 'block';
+      setTimeout(() => n.style.display='none', 3500);
+    }
+
+    async function salvar(pergunta, resposta, numArqs) {
       if (!window.APP.user) return;
       try {
-        const matchEcon = resposta.match(/R\$\s*([\d.,]+)/);
-        const economia = matchEcon ? parseFloat(matchEcon[1].replace(/\./g,'').replace(',','.')) : 0;
-        await addDoc(collection(db, "analises"), {
+        const m = resposta.match(/R\$\s*([\d.,]+)/);
+        const econ = m ? parseFloat(m[1].replace(/\./g,'').replace(',','.')) : 0;
+        await addDoc(collection(db,'analises'), {
           uid: window.APP.user.uid,
-          empresa: window.APP.empresa.nomeEmpresa || '',
-          plano: window.APP.empresa.plano || 'Básico',
+          empresa: window.APP.empresa.nomeEmpresa||'',
+          plano: window.APP.empresa.plano||'Básico',
           pergunta: pergunta.substring(0,200),
           resposta: resposta.substring(0,2000),
-          numArquivos: numArquivos || 0,
-          economia,
-          temRisco: resposta.includes('⚠️') || resposta.toLowerCase().includes('risco fiscal'),
+          numArqs: numArqs||0, economia: econ,
+          temRisco: resposta.toLowerCase().includes('risco')||resposta.includes('⚠️'),
           data: new Date().toISOString(),
-          mes: new Date().getMonth()+1,
-          ano: new Date().getFullYear()
+          mes: new Date().getMonth()+1, ano: new Date().getFullYear()
         });
-      } catch(e) { console.log('Erro ao salvar:', e); }
+      } catch(e) {}
     }
 
     async function carregarHistorico() {
       if (!window.APP.user) return;
       try {
-        const q = query(collection(db,"analises"), where("uid","==",window.APP.user.uid), orderBy("data","desc"));
+        const q = query(collection(db,'analises'),where('uid','==',window.APP.user.uid),orderBy('data','desc'));
         const snap = await getDocs(q);
-        window.APP.historico = snap.docs.map(d => ({id:d.id,...d.data()}));
-      } catch(e) { window.APP.historico = []; }
+        window.APP.historico = snap.docs.map(d=>({id:d.id,...d.data()}));
+      } catch(e) { window.APP.historico=[]; }
     }
 
     function atualizarDashboard() {
-      const hist = window.APP.historico;
+      const h = window.APP.historico;
       const agora = new Date();
-      const mes = hist.filter(a => a.mes===agora.getMonth()+1 && a.ano===agora.getFullYear());
-      const econ = mes.reduce((s,a) => s+(a.economia||0), 0);
-      const riscos = mes.filter(a => a.temRisco).length;
-      const docs = mes.reduce((s,a) => s+(a.numArquivos||0), 0);
-      document.getElementById('stat-analises').textContent = mes.length;
-      document.getElementById('stat-economia').textContent = econ > 0 ? `R$ ${econ.toLocaleString('pt-BR')}` : 'R$ 0';
-      document.getElementById('stat-riscos').textContent = riscos;
-      document.getElementById('stat-docs').textContent = docs;
-      const lista = document.getElementById('historico-lista');
-      if (lista) {
-        lista.innerHTML = hist.slice(0,5).map(a => `
-          <div class="hist-item">
-            <div class="hist-pergunta">${a.pergunta.substring(0,80)}...</div>
-            <div class="hist-meta">
-              <span>${new Date(a.data).toLocaleDateString('pt-BR')}</span>
-              ${a.numArquivos>0?`<span>📎 ${a.numArquivos} arquivo(s)</span>`:''}
-              ${a.economia>0?`<span class="hist-econ">💰 R$ ${a.economia.toLocaleString('pt-BR')}</span>`:''}
-              ${a.temRisco?`<span class="hist-risco">⚠️ Risco</span>`:''}
-            </div>
-          </div>`).join('') || '<p class="vazio">Nenhuma análise ainda.</p>';
-      }
+      const mes = h.filter(a=>a.mes===agora.getMonth()+1&&a.ano===agora.getFullYear());
+      const econ = mes.reduce((s,a)=>s+(a.economia||0),0);
+      document.getElementById('s-analises').textContent = mes.length;
+      document.getElementById('s-docs').textContent = mes.reduce((s,a)=>s+(a.numArqs||0),0);
+      document.getElementById('s-econ').textContent = `R$ ${econ.toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
+      document.getElementById('s-riscos').textContent = mes.filter(a=>a.temRisco).length;
+      const lista = document.getElementById('hist-lista');
+      lista.innerHTML = h.slice(0,6).map(a=>`
+        <div class="hist-row">
+          <div class="hist-data">${new Date(a.data).toLocaleDateString('pt-BR')}</div>
+          <div class="hist-desc">${a.pergunta.substring(0,60)}...</div>
+          <div class="hist-badges">
+            ${a.numArqs>0?`<span class="badge badge-blue">${a.numArqs} arq.</span>`:''}
+            ${a.economia>0?`<span class="badge badge-green">R$ ${a.economia.toLocaleString('pt-BR')}</span>`:''}
+            ${a.temRisco?`<span class="badge badge-red">Risco</span>`:''}
+          </div>
+        </div>`).join('') || '<p class="empty">Nenhuma análise registrada.</p>';
     }
 
     window.gerarRelatorio = async () => {
       await carregarHistorico();
-      const hist = window.APP.historico;
+      const h = window.APP.historico;
       const agora = new Date();
       const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-      const mesAtual = hist.filter(a => a.mes===agora.getMonth()+1 && a.ano===agora.getFullYear());
-      const totalEcon = mesAtual.reduce((s,a) => s+(a.economia||0), 0);
-      const riscos = mesAtual.filter(a => a.temRisco).length;
-      const totalDocs = mesAtual.reduce((s,a) => s+(a.numArquivos||0), 0);
+      const mes = h.filter(a=>a.mes===agora.getMonth()+1&&a.ano===agora.getFullYear());
+      const econ = mes.reduce((s,a)=>s+(a.economia||0),0);
+      const riscos = mes.filter(a=>a.temRisco).length;
+      const docs = mes.reduce((s,a)=>s+(a.numArqs||0),0);
       const porMes = {};
-      hist.forEach(a => {
-        const k = `${a.ano}-${String(a.mes).padStart(2,'0')}`;
-        if (!porMes[k]) porMes[k] = {analises:0,economia:0,riscos:0,docs:0};
-        porMes[k].analises++; porMes[k].economia+=a.economia||0;
-        porMes[k].docs+=a.numArquivos||0;
-        if (a.temRisco) porMes[k].riscos++;
+      h.forEach(a=>{
+        const k=`${a.ano}-${String(a.mes).padStart(2,'0')}`;
+        if(!porMes[k]) porMes[k]={n:0,e:0,r:0,d:0};
+        porMes[k].n++; porMes[k].e+=a.economia||0; porMes[k].d+=a.numArqs||0;
+        if(a.temRisco) porMes[k].r++;
       });
-      document.getElementById('relatorio-conteudo').innerHTML = `
-        <div class="rel-header">
-          <div class="rel-logo">🧮 Contábil Inteligente</div>
-          <div class="rel-titulo">Relatório Mensal — ${meses[agora.getMonth()]} ${agora.getFullYear()}</div>
-          <div class="rel-empresa">${window.APP.empresa.nomeEmpresa||'Cliente'} • Plano ${window.APP.empresa.plano||'Básico'}</div>
+      document.getElementById('rel-conteudo').innerHTML = `
+        <div class="rel-capa">
+          <div class="rel-marca">CONTÁBIL INTELIGENTE</div>
+          <div class="rel-periodo">Relatório de Desempenho — ${meses[agora.getMonth()]} ${agora.getFullYear()}</div>
+          <div class="rel-cliente">${window.APP.empresa.nomeEmpresa||'Cliente'} · Plano ${window.APP.empresa.plano||'Básico'}</div>
+          <div class="rel-gerado">Gerado em ${new Date().toLocaleDateString('pt-BR')} · contabilinteligente.api.br</div>
         </div>
-        <div class="rel-cards">
-          <div class="rel-card"><div class="rel-num">${mesAtual.length}</div><div class="rel-lbl">Análises realizadas</div></div>
-          <div class="rel-card"><div class="rel-num">${totalDocs}</div><div class="rel-lbl">Documentos analisados</div></div>
-          <div class="rel-card verde"><div class="rel-num">R$ ${totalEcon.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div><div class="rel-lbl">Economia identificada</div></div>
-          <div class="rel-card ${riscos>0?'vermelho':''}"><div class="rel-num">${riscos}</div><div class="rel-lbl">Riscos fiscais</div></div>
-        </div>
-        <div class="rel-sec">
-          <div class="rel-sec-titulo">📊 Histórico por mês</div>
-          <table class="rel-tab"><thead><tr><th>Mês</th><th>Análises</th><th>Documentos</th><th>Economia</th><th>Riscos</th></tr></thead><tbody>
-            ${Object.entries(porMes).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6).map(([k,d])=>{
-              const [ano,m]=k.split('-');
-              return `<tr><td>${meses[parseInt(m)-1]} ${ano}</td><td>${d.analises}</td><td>${d.docs}</td><td>R$ ${d.economia.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td>${d.riscos>0?`⚠️ ${d.riscos}`:'✅ 0'}</td></tr>`;
-            }).join('')||'<tr><td colspan="5" style="text-align:center;color:#999">Nenhum dado ainda</td></tr>'}
-          </tbody></table>
+        <div class="rel-kpis">
+          <div class="rel-kpi"><div class="rel-kpi-num">${mes.length}</div><div class="rel-kpi-lbl">Análises realizadas</div></div>
+          <div class="rel-kpi"><div class="rel-kpi-num">${docs}</div><div class="rel-kpi-lbl">Documentos processados</div></div>
+          <div class="rel-kpi accent"><div class="rel-kpi-num">R$ ${econ.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div><div class="rel-kpi-lbl">Economia identificada</div></div>
+          <div class="rel-kpi ${riscos>0?'danger':''}"><div class="rel-kpi-num">${riscos}</div><div class="rel-kpi-lbl">Alertas fiscais</div></div>
         </div>
         <div class="rel-sec">
-          <div class="rel-sec-titulo">📋 Últimas análises do mês</div>
-          ${mesAtual.slice(0,5).map(a=>`
-            <div class="rel-analise">
-              <div class="rel-analise-data">${new Date(a.data).toLocaleDateString('pt-BR')} ${a.numArquivos>0?`• 📎 ${a.numArquivos} arquivo(s)`:''}</div>
-              <div class="rel-analise-texto">${a.pergunta.substring(0,120)}...</div>
-              ${a.economia>0?`<div class="rel-analise-econ">💰 R$ ${a.economia.toLocaleString('pt-BR')}</div>`:''}
-            </div>`).join('')||'<p style="color:#999;text-align:center;padding:20px">Nenhuma análise este mês.</p>'}
+          <div class="rel-sec-titulo">Histórico Mensal</div>
+          <table class="rel-tabela">
+            <thead><tr><th>Período</th><th>Análises</th><th>Documentos</th><th>Economia (R$)</th><th>Alertas</th></tr></thead>
+            <tbody>${Object.entries(porMes).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,8).map(([k,d])=>{
+              const [y,m]=k.split('-');
+              return `<tr><td>${meses[parseInt(m)-1]} ${y}</td><td>${d.n}</td><td>${d.d}</td><td>${d.e.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td>${d.r>0?`⚠ ${d.r}`:'—'}</td></tr>`;
+            }).join('')||'<tr><td colspan="5" class="empty-cell">Sem dados</td></tr>'}</tbody>
+          </table>
         </div>
-        <div class="rel-rodape">Relatório gerado em ${new Date().toLocaleDateString('pt-BR')} • Contábil Inteligente • contabilinteligente.api.br</div>`;
+        <div class="rel-sec">
+          <div class="rel-sec-titulo">Registros do Mês</div>
+          ${mes.slice(0,8).map(a=>`
+            <div class="rel-item">
+              <div class="rel-item-data">${new Date(a.data).toLocaleDateString('pt-BR')}</div>
+              <div class="rel-item-desc">${a.pergunta.substring(0,100)}...</div>
+              <div class="rel-item-info">${a.numArqs>0?`${a.numArqs} doc. ·`:''} ${a.economia>0?`R$ ${a.economia.toLocaleString('pt-BR')}`:''} ${a.temRisco?'· ⚠ Alerta':''}</div>
+            </div>`).join('')||'<p class="empty">Nenhum registro este mês.</p>'}
+        </div>`;
     };
   </script>
 
   <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{--navy:#0B1F3A;--blue:#1A56DB;--blue-l:#3B82F6;--green:#10B77F;--red:#EF4444;--gray:#F4F6FA;--gray-mid:#8A97B0;--border:rgba(11,31,58,0.08);--white:#FFFFFF;--text:#1C2B40}
-    html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--text);overflow:hidden}
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* LOGIN */
-    #tela-login{display:flex;height:100vh;align-items:center;justify-content:center;background:linear-gradient(160deg,#0B1F3A 0%,#0D2A50 60%,#0B3D2E 100%);position:relative;overflow:hidden}
-    #tela-login::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 60% at 20% 50%,rgba(26,86,219,0.2) 0%,transparent 65%),radial-gradient(ellipse 50% 50% at 80% 30%,rgba(16,183,127,0.12) 0%,transparent 60%)}
-    .login-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px);background-size:48px 48px}
-    .login-card{position:relative;z-index:2;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(20px);border-radius:24px;padding:48px 44px;width:100%;max-width:420px;animation:fadeUp 0.6s ease both}
-    .login-logo{display:flex;align-items:center;gap:12px;margin-bottom:36px}
-    .login-logo-icon{width:44px;height:44px;background:linear-gradient(135deg,var(--blue),var(--green));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px}
-    .login-logo-text{font-family:'Syne',sans-serif;font-weight:700;font-size:1.1rem;color:#fff;line-height:1.1}
-    .login-logo-text span{display:block;font-size:0.6rem;font-weight:400;color:var(--green);letter-spacing:0.1em;text-transform:uppercase}
-    .login-title{font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;color:#fff;margin-bottom:6px}
-    .login-sub{font-size:0.88rem;color:rgba(255,255,255,0.45);margin-bottom:32px}
-    .campo-label{font-size:0.78rem;font-weight:500;color:rgba(255,255,255,0.6);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:8px;display:block}
-    .campo-input{width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 18px;font-size:0.95rem;color:#fff;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s;margin-bottom:20px}
-    .campo-input:focus{border-color:var(--blue-l);background:rgba(255,255,255,0.09)}
-    .campo-input::placeholder{color:rgba(255,255,255,0.25)}
-    .btn-login{width:100%;background:linear-gradient(135deg,var(--blue),#1048b8);color:#fff;font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;padding:16px;border:none;border-radius:12px;cursor:pointer;transition:opacity 0.2s,transform 0.2s;box-shadow:0 8px 24px rgba(26,86,219,0.4);margin-top:4px}
-    .btn-login:hover{opacity:0.9;transform:translateY(-1px)}
-    .btn-login:disabled{opacity:0.6;cursor:not-allowed;transform:none}
-    .erro{display:none;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#FCA5A5;font-size:0.85rem;padding:12px 16px;border-radius:10px;margin-top:16px;text-align:center}
-    .login-footer{margin-top:28px;text-align:center;font-size:0.78rem;color:rgba(255,255,255,0.25)}
+    :root {
+      --ink:      #0F1923;
+      --ink-2:    #2C3A4A;
+      --ink-3:    #5C6B7A;
+      --rule:     #DDE3EA;
+      --bg:       #F7F8FA;
+      --bg-2:     #ECEEF2;
+      --white:    #FFFFFF;
+      --gold:     #B8960C;
+      --gold-l:   #FBF5DC;
+      --teal:     #0A6E6E;
+      --teal-l:   #D6EFEF;
+      --red:      #B91C1C;
+      --red-l:    #FEE2E2;
+      --blue:     #1D4ED8;
+      --blue-l:   #DBEAFE;
+    }
 
-    /* PAINEL */
-    #tela-painel{display:none;flex-direction:column;height:100vh;background:var(--gray)}
-    .header{background:var(--navy);padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.06)}
-    .header-logo{display:flex;align-items:center;gap:10px}
-    .header-logo-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--blue),var(--green));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px}
-    .header-logo-text{font-family:'Syne',sans-serif;font-weight:700;font-size:0.95rem;color:#fff}
-    .header-right{display:flex;align-items:center;gap:16px}
-    .header-info{text-align:right}
-    .header-nome{font-family:'Syne',sans-serif;font-size:0.85rem;font-weight:700;color:#fff}
-    .header-plano{font-size:0.68rem;color:var(--green);font-weight:600;letter-spacing:0.08em;text-transform:uppercase}
-    .header-email{font-size:0.7rem;color:rgba(255,255,255,0.35)}
-    .btn-sair{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);font-size:0.78rem;padding:7px 16px;border-radius:8px;cursor:pointer;transition:background 0.2s;font-family:'DM Sans',sans-serif}
-    .btn-sair:hover{background:rgba(255,255,255,0.12);color:#fff}
-    .painel-body{display:flex;flex:1;overflow:hidden}
-    .sidebar{width:220px;background:var(--white);border-right:1px solid var(--border);padding:20px 12px;flex-shrink:0;display:flex;flex-direction:column;gap:2px}
-    .sidebar-label{font-size:0.68rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--gray-mid);padding:8px 12px 4px}
-    .nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;font-size:0.88rem;color:var(--text);cursor:pointer;transition:background 0.15s;font-weight:400;border:none;background:none;width:100%;text-align:left}
-    .nav-item:hover{background:var(--gray)}
-    .nav-item.ativo{background:rgba(26,86,219,0.08);color:var(--blue);font-weight:600}
-    .nav-item .icon{font-size:16px}
-    .main{flex:1;display:flex;flex-direction:column;overflow:hidden}
-    .aba{display:none;flex-direction:column;flex:1;overflow:hidden}
-    .aba.ativa{display:flex}
+    html, body { height: 100%; font-family: 'IBM Plex Sans', sans-serif; background: var(--bg); color: var(--ink); overflow: hidden; }
+
+    /* ── LOGIN ── */
+    #tela-login {
+      display: flex; height: 100vh; align-items: stretch;
+      background: var(--white);
+    }
+
+    .login-left {
+      width: 48%; background: var(--ink);
+      display: flex; flex-direction: column; justify-content: space-between;
+      padding: 56px 64px; position: relative; overflow: hidden;
+    }
+
+    .login-left::before {
+      content: '';
+      position: absolute; top: -120px; right: -120px;
+      width: 400px; height: 400px;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 50%;
+    }
+
+    .login-left::after {
+      content: '';
+      position: absolute; bottom: -80px; left: -80px;
+      width: 280px; height: 280px;
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 50%;
+    }
+
+    .ll-marca {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.4rem; color: var(--white);
+      letter-spacing: 0.02em;
+      display: flex; align-items: center; gap: 12px;
+    }
+
+    .ll-marca-icon {
+      width: 36px; height: 36px;
+      background: var(--gold);
+      border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+
+    .ll-body { position: relative; z-index: 2; }
+
+    .ll-headline {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.8rem; font-weight: 700;
+      color: var(--white); line-height: 1.15;
+      margin-bottom: 20px;
+    }
+
+    .ll-headline em { color: var(--gold); font-style: normal; }
+
+    .ll-desc {
+      font-size: 0.95rem; color: rgba(255,255,255,0.55);
+      line-height: 1.75; max-width: 340px;
+    }
+
+    .ll-features { margin-top: 36px; display: flex; flex-direction: column; gap: 14px; }
+
+    .ll-feature {
+      display: flex; align-items: center; gap: 12px;
+      font-size: 0.85rem; color: rgba(255,255,255,0.7);
+    }
+
+    .ll-feature-dot {
+      width: 6px; height: 6px; background: var(--gold);
+      border-radius: 50%; flex-shrink: 0;
+    }
+
+    .ll-footer {
+      font-size: 0.75rem; color: rgba(255,255,255,0.25);
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .login-right {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 48px;
+    }
+
+    .login-form { width: 100%; max-width: 380px; }
+
+    .lf-titulo {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.8rem; color: var(--ink);
+      margin-bottom: 8px;
+    }
+
+    .lf-sub { font-size: 0.88rem; color: var(--ink-3); margin-bottom: 40px; }
+
+    .lf-label {
+      display: block; font-size: 0.72rem; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--ink-2); margin-bottom: 8px;
+    }
+
+    .lf-input {
+      width: 100%; border: 1px solid var(--rule);
+      background: var(--white); padding: 13px 16px;
+      font-size: 0.92rem; font-family: 'IBM Plex Sans', sans-serif;
+      color: var(--ink); outline: none; border-radius: 4px;
+      transition: border-color 0.2s; margin-bottom: 20px;
+    }
+
+    .lf-input:focus { border-color: var(--ink); }
+
+    .lf-btn {
+      width: 100%; background: var(--ink); color: var(--white);
+      font-family: 'IBM Plex Sans', sans-serif; font-weight: 600;
+      font-size: 0.9rem; padding: 14px; border: none;
+      border-radius: 4px; cursor: pointer; letter-spacing: 0.04em;
+      transition: background 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+
+    .lf-btn:hover { background: var(--ink-2); }
+    .lf-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .lf-erro {
+      display: none; font-size: 0.82rem; color: var(--red);
+      background: var(--red-l); border: 1px solid #FECACA;
+      padding: 10px 14px; border-radius: 4px; margin-top: 16px;
+    }
+
+    .lf-footer { margin-top: 32px; font-size: 0.78rem; color: var(--ink-3); }
+
+    .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
+
+    /* ── APP ── */
+    #tela-app { display: none; height: 100vh; flex-direction: column; }
+
+    .topbar {
+      height: 56px; background: var(--white);
+      border-bottom: 1px solid var(--rule);
+      display: flex; align-items: center;
+      padding: 0 28px; gap: 16px; flex-shrink: 0;
+    }
+
+    .tb-marca {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.05rem; color: var(--ink);
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .tb-icon {
+      width: 28px; height: 28px; background: var(--ink);
+      border-radius: 4px; display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+
+    .tb-divider { width: 1px; height: 24px; background: var(--rule); margin: 0 8px; }
+
+    .tb-user { margin-left: auto; display: flex; align-items: center; gap: 20px; }
+
+    .tb-info { text-align: right; }
+
+    .tb-nome { font-size: 0.85rem; font-weight: 600; color: var(--ink); }
+
+    .tb-plano {
+      font-size: 0.68rem; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--teal);
+    }
+
+    .tb-email { font-size: 0.7rem; color: var(--ink-3); font-family: 'IBM Plex Mono', monospace; }
+
+    .tb-sair {
+      font-size: 0.78rem; color: var(--ink-3); background: none;
+      border: 1px solid var(--rule); padding: 6px 14px; border-radius: 4px;
+      cursor: pointer; font-family: 'IBM Plex Sans', sans-serif;
+      transition: all 0.2s;
+    }
+
+    .tb-sair:hover { border-color: var(--ink); color: var(--ink); }
+
+    .app-body { display: flex; flex: 1; overflow: hidden; }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 220px; background: var(--white);
+      border-right: 1px solid var(--rule);
+      padding: 24px 16px; flex-shrink: 0;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+
+    .nav-grupo { font-size: 0.65rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); padding: 8px 12px 6px; margin-top: 8px; }
+
+    .nav-btn {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: 4px;
+      font-size: 0.86rem; color: var(--ink-2);
+      cursor: pointer; transition: all 0.15s;
+      font-weight: 400; border: none; background: none;
+      width: 100%; text-align: left;
+      font-family: 'IBM Plex Sans', sans-serif;
+    }
+
+    .nav-btn:hover { background: var(--bg); color: var(--ink); }
+    .nav-btn.ativo { background: var(--ink); color: var(--white); font-weight: 500; }
+    .nav-btn .icon { font-size: 15px; opacity: 0.8; }
+
+    /* MAIN */
+    .main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+    .aba { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+    .aba.ativa { display: flex; }
 
     /* DASHBOARD */
-    .dash-body{flex:1;overflow-y:auto;padding:28px}
-    .dash-titulo{font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;color:var(--navy);margin-bottom:4px}
-    .dash-sub{font-size:0.85rem;color:var(--gray-mid);margin-bottom:24px}
-    .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:28px}
-    .stat-card{background:var(--white);border-radius:16px;padding:20px;border:1px solid var(--border)}
-    .stat-icon{font-size:20px;margin-bottom:10px}
-    .stat-num{font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;color:var(--navy)}
-    .stat-label{font-size:0.75rem;color:var(--gray-mid);margin-top:2px}
-    .hist-card{background:var(--white);border-radius:16px;padding:20px;border:1px solid var(--border)}
-    .hist-titulo{font-family:'Syne',sans-serif;font-size:0.95rem;font-weight:700;color:var(--navy);margin-bottom:16px}
-    .hist-item{padding:12px 0;border-bottom:1px solid var(--border)}
-    .hist-item:last-child{border-bottom:none}
-    .hist-pergunta{font-size:0.85rem;color:var(--text);margin-bottom:6px}
-    .hist-meta{display:flex;align-items:center;gap:10px;font-size:0.75rem;color:var(--gray-mid);flex-wrap:wrap}
-    .hist-econ{color:var(--green);font-weight:600}
-    .hist-risco{color:var(--red);font-weight:600}
-    .vazio{font-size:0.85rem;color:var(--gray-mid);text-align:center;padding:20px 0}
-    .dica-card{background:linear-gradient(135deg,var(--navy),#0D2A50);border-radius:16px;padding:24px;color:#fff;margin-top:20px}
-    .dica-card h3{font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin-bottom:8px}
-    .dica-card p{font-size:0.85rem;color:rgba(255,255,255,0.6);line-height:1.6}
-    .dica-btn{display:inline-block;margin-top:14px;background:linear-gradient(135deg,var(--blue),#1048b8);color:#fff;font-family:'Syne',sans-serif;font-weight:600;font-size:0.82rem;padding:9px 18px;border-radius:8px;border:none;cursor:pointer}
+    .dash-scroll { flex: 1; overflow-y: auto; padding: 32px; background: var(--bg); }
+
+    .dash-header { margin-bottom: 28px; }
+    .dash-titulo { font-family: 'Playfair Display', serif; font-size: 1.6rem; color: var(--ink); margin-bottom: 4px; }
+    .dash-sub { font-size: 0.85rem; color: var(--ink-3); }
+
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin-bottom: 28px; }
+
+    .kpi { background: var(--white); padding: 24px 20px; }
+    .kpi-icon { font-size: 18px; margin-bottom: 12px; opacity: 0.7; }
+    .kpi-num { font-family: 'IBM Plex Mono', monospace; font-size: 1.8rem; font-weight: 500; color: var(--ink); line-height: 1; }
+    .kpi-lbl { font-size: 0.75rem; color: var(--ink-3); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+    .panel { background: var(--white); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin-bottom: 20px; }
+    .panel-header { padding: 16px 20px; border-bottom: 1px solid var(--rule); display: flex; align-items: center; justify-content: space-between; }
+    .panel-titulo { font-size: 0.85rem; font-weight: 600; color: var(--ink); text-transform: uppercase; letter-spacing: 0.06em; }
+
+    .hist-row { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--rule); }
+    .hist-row:last-child { border-bottom: none; }
+    .hist-data { font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--ink-3); white-space: nowrap; }
+    .hist-desc { flex: 1; font-size: 0.85rem; color: var(--ink-2); }
+    .hist-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .badge { font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 3px; white-space: nowrap; }
+    .badge-blue { background: var(--blue-l); color: var(--blue); }
+    .badge-green { background: var(--teal-l); color: var(--teal); }
+    .badge-red { background: var(--red-l); color: var(--red); }
+
+    .empty { padding: 24px 20px; font-size: 0.85rem; color: var(--ink-3); text-align: center; }
+
+    .dica { background: var(--ink); border-radius: 6px; padding: 24px; color: #fff; }
+    .dica h3 { font-family: 'Playfair Display', serif; font-size: 1.1rem; margin-bottom: 8px; }
+    .dica p { font-size: 0.85rem; color: rgba(255,255,255,0.55); line-height: 1.7; }
+    .dica-btn { margin-top: 16px; background: var(--gold); color: var(--ink); font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 0.82rem; padding: 9px 18px; border-radius: 4px; border: none; cursor: pointer; }
 
     /* CHAT */
-    .chat-topbar{background:var(--navy);padding:12px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0}
-    .chat-dots{display:flex;gap:5px}
-    .chat-dots span{width:10px;height:10px;border-radius:50%}
-    .dot-r{background:#FF5F57}.dot-y{background:#FFBD2E}.dot-g{background:#28C840}
-    .chat-title-bar{font-family:'Syne',sans-serif;font-size:0.82rem;color:rgba(255,255,255,0.6)}
-    .chat-online{margin-left:auto;font-size:0.72rem;color:var(--green);display:flex;align-items:center;gap:5px}
-    .chat-online::before{content:'';width:6px;height:6px;background:var(--green);border-radius:50%;animation:pulse 2s infinite}
-    .chat-mensagens{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px;background:var(--gray)}
-    .bolha{max-width:82%;padding:14px 18px;border-radius:16px;line-height:1.6;font-size:0.88rem}
-    .bolha-user{background:var(--blue);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
-    .bolha-assistant{background:var(--white);color:var(--text);align-self:flex-start;border-bottom-left-radius:4px;border:1px solid var(--border)}
-    .bolha-assistant strong{color:var(--navy)}
-    .digitando{display:flex;gap:6px;align-items:center;padding:16px 20px}
-    .digitando span{width:8px;height:8px;background:var(--gray-mid);border-radius:50%;animation:bounce 1.2s infinite}
-    .digitando span:nth-child(2){animation-delay:0.2s}
-    .digitando span:nth-child(3){animation-delay:0.4s}
+    .chat-bar {
+      height: 48px; background: var(--white); border-bottom: 1px solid var(--rule);
+      padding: 0 20px; display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+    }
+
+    .chat-dots { display: flex; gap: 5px; }
+    .chat-dots span { width: 9px; height: 9px; border-radius: 50%; }
+    .dot-r { background: #FF5F57; } .dot-y { background: #FFBD2E; } .dot-g { background: #28C840; }
+    .chat-bar-title { font-size: 0.8rem; color: var(--ink-3); font-family: 'IBM Plex Mono', monospace; }
+    .chat-status { margin-left: auto; font-size: 0.72rem; color: var(--teal); display: flex; align-items: center; gap: 5px; }
+    .chat-status::before { content: ''; width: 6px; height: 6px; background: var(--teal); border-radius: 50%; animation: pulse 2s infinite; }
+
+    .chat-msgs {
+      flex: 1; overflow-y: auto; padding: 24px 28px;
+      display: flex; flex-direction: column; gap: 20px;
+      background: var(--bg);
+    }
+
+    .msg { display: flex; gap: 12px; align-items: flex-start; }
+    .msg-user { flex-direction: row-reverse; }
+
+    .msg-avatar {
+      width: 32px; height: 32px; background: var(--ink); color: #fff;
+      border-radius: 4px; display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; font-weight: 600; letter-spacing: 0.05em; flex-shrink: 0;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .msg-bubble {
+      max-width: 78%; background: var(--white); border: 1px solid var(--rule);
+      border-radius: 6px; padding: 14px 18px;
+      font-size: 0.88rem; line-height: 1.65; color: var(--ink-2);
+    }
+
+    .msg-user .msg-bubble {
+      background: var(--ink); border-color: var(--ink);
+      color: rgba(255,255,255,0.9); border-radius: 6px;
+    }
+
+    .msg-bubble strong { color: var(--ink); }
+    .msg-user .msg-bubble strong { color: #fff; }
+    .msg-bubble hr.sep { border: none; border-top: 1px solid var(--rule); margin: 10px 0; }
+
+    .typing-bubble { display: flex; gap: 6px; align-items: center; padding: 16px 18px; }
+    .typing-bubble span { width: 7px; height: 7px; background: var(--ink-3); border-radius: 50%; animation: bounce 1.2s infinite; }
+    .typing-bubble span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-bubble span:nth-child(3) { animation-delay: 0.4s; }
 
     /* DROP ZONE */
-    .drop-zone{border:2px dashed var(--border);border-radius:12px;padding:16px;text-align:center;cursor:pointer;transition:all 0.2s;background:var(--white);margin:12px 20px 0}
-    .drop-zone.drag-over{border-color:var(--blue);background:rgba(26,86,219,0.04)}
-    .drop-zone p{font-size:0.82rem;color:var(--gray-mid)}
-    .drop-zone strong{color:var(--blue);cursor:pointer}
-    .limite-info{font-size:0.72rem;color:var(--gray-mid);margin-top:4px}
+    .drop-zone {
+      margin: 12px 20px 0; border: 1px dashed var(--rule); border-radius: 6px;
+      padding: 14px 20px; display: flex; align-items: center; gap: 12px;
+      cursor: pointer; transition: all 0.2s; background: var(--white);
+    }
 
-    /* ARQUIVOS PREVIEW */
-    #arquivos-preview{display:none;flex-wrap:wrap;gap:8px;padding:8px 20px}
-    .arquivo-chip{display:flex;align-items:center;gap:6px;background:rgba(26,86,219,0.08);border:1px solid rgba(26,86,219,0.2);border-radius:8px;padding:5px 10px;font-size:0.78rem;color:var(--blue)}
-    .arquivo-chip button{background:none;border:none;color:var(--blue);cursor:pointer;font-size:1rem;line-height:1;padding:0 2px}
+    .drop-zone:hover, .drop-zone.drag { border-color: var(--ink); background: var(--bg); }
 
-    /* AVISO PLANO */
-    #aviso-plano{display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--red);font-size:0.8rem;padding:8px 16px;margin:0 20px;border-radius:8px;text-align:center}
+    .dz-icon { font-size: 18px; opacity: 0.5; flex-shrink: 0; }
+    .dz-text { flex: 1; }
+    .dz-text p { font-size: 0.82rem; color: var(--ink-2); }
+    .dz-text p strong { color: var(--blue); }
+    .dz-lim { font-size: 0.72rem; color: var(--ink-3); margin-top: 2px; font-family: 'IBM Plex Mono', monospace; }
 
-    .chat-input-area{padding:12px 20px 16px;background:var(--white);border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-end}
-    .chat-input{flex:1;border:1px solid var(--border);border-radius:12px;padding:12px 16px;font-size:0.9rem;font-family:'DM Sans',sans-serif;color:var(--text);resize:none;outline:none;max-height:100px;transition:border-color 0.2s;background:var(--gray)}
-    .chat-input:focus{border-color:var(--blue-l);background:var(--white)}
-    .btn-enviar{background:linear-gradient(135deg,var(--blue),#1048b8);color:#fff;border:none;border-radius:10px;padding:12px 20px;font-family:'Syne',sans-serif;font-weight:600;font-size:0.85rem;cursor:pointer;transition:opacity 0.2s;white-space:nowrap}
-    .btn-enviar:hover{opacity:0.9}
-    input[type=file]{display:none}
+    #chips-wrap { display: none; flex-wrap: wrap; gap: 8px; padding: 8px 20px; }
+    .chip { display: flex; align-items: center; gap: 6px; background: var(--bg-2); border: 1px solid var(--rule); border-radius: 4px; padding: 5px 10px; font-size: 0.75rem; color: var(--ink-2); font-family: 'IBM Plex Mono', monospace; }
+    .chip-nome { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chip button { background: none; border: none; color: var(--ink-3); cursor: pointer; font-size: 1rem; padding: 0 2px; line-height: 1; }
+    .chip button:hover { color: var(--red); }
+
+    .notif { display: none; margin: 6px 20px 0; font-size: 0.8rem; padding: 8px 14px; border-radius: 4px; }
+    .notif-warn { background: var(--gold-l); color: var(--gold); border: 1px solid #E8D066; }
+
+    .chat-input-row {
+      padding: 12px 20px 16px; background: var(--white);
+      border-top: 1px solid var(--rule); display: flex; gap: 10px; align-items: flex-end;
+    }
+
+    .chat-input {
+      flex: 1; border: 1px solid var(--rule); border-radius: 4px;
+      padding: 11px 14px; font-size: 0.88rem;
+      font-family: 'IBM Plex Sans', sans-serif; color: var(--ink);
+      resize: none; outline: none; max-height: 100px; background: var(--bg);
+      transition: border-color 0.2s;
+    }
+    .chat-input:focus { border-color: var(--ink); background: var(--white); }
+
+    .btn-enviar {
+      background: var(--ink); color: var(--white);
+      font-family: 'IBM Plex Sans', sans-serif; font-weight: 600;
+      font-size: 0.85rem; padding: 11px 22px; border: none; border-radius: 4px;
+      cursor: pointer; white-space: nowrap; transition: background 0.2s;
+      letter-spacing: 0.03em;
+    }
+    .btn-enviar:hover { background: var(--ink-2); }
+
+    input[type=file] { display: none; }
 
     /* RELATÓRIO */
-    .rel-body{flex:1;overflow-y:auto;padding:28px}
-    .rel-titulo-sec{font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;color:var(--navy);margin-bottom:24px}
-    #relatorio-conteudo{background:var(--white);border-radius:20px;border:1px solid var(--border);overflow:hidden}
-    .rel-header{background:linear-gradient(135deg,var(--navy),#0D2A50);padding:32px;color:#fff}
-    .rel-logo{font-size:0.85rem;color:rgba(255,255,255,0.5);margin-bottom:8px}
-    .rel-titulo{font-family:'Syne',sans-serif;font-size:1.5rem;font-weight:800;margin-bottom:4px}
-    .rel-empresa{font-size:0.9rem;color:rgba(255,255,255,0.6)}
-    .rel-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--border)}
-    .rel-card{background:var(--white);padding:24px 20px;text-align:center}
-    .rel-card.verde{background:#D1FAE5}
-    .rel-card.vermelho{background:#FEE2E2}
-    .rel-num{font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;color:var(--navy);margin-bottom:4px}
-    .rel-lbl{font-size:0.75rem;color:var(--gray-mid)}
-    .rel-sec{padding:24px 32px;border-top:1px solid var(--border)}
-    .rel-sec-titulo{font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;color:var(--navy);margin-bottom:16px}
-    .rel-tab{width:100%;border-collapse:collapse;font-size:0.85rem}
-    .rel-tab th{text-align:left;padding:10px 12px;background:var(--gray);color:var(--gray-mid);font-weight:600;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em}
-    .rel-tab td{padding:12px;border-bottom:1px solid var(--border);color:var(--text)}
-    .rel-analise{padding:12px 0;border-bottom:1px solid var(--border)}
-    .rel-analise:last-child{border-bottom:none}
-    .rel-analise-data{font-size:0.75rem;color:var(--gray-mid);margin-bottom:4px}
-    .rel-analise-texto{font-size:0.85rem;color:var(--text);margin-bottom:4px}
-    .rel-analise-econ{font-size:0.8rem;color:var(--green);font-weight:600}
-    .rel-rodape{padding:20px 32px;font-size:0.75rem;color:var(--gray-mid);text-align:center;border-top:1px solid var(--border);background:var(--gray)}
+    .rel-scroll { flex: 1; overflow-y: auto; padding: 32px; background: var(--bg); }
+    .rel-page { background: var(--white); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
 
-    @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
-    @keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}
-    @media(max-width:640px){.sidebar{display:none}.login-card{margin:16px;padding:32px 24px}}
+    .rel-capa { background: var(--ink); padding: 40px; color: #fff; }
+    .rel-marca { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(255,255,255,0.4); margin-bottom: 16px; font-family: 'IBM Plex Mono', monospace; }
+    .rel-periodo { font-family: 'Playfair Display', serif; font-size: 1.8rem; color: #fff; margin-bottom: 6px; }
+    .rel-cliente { font-size: 0.9rem; color: rgba(255,255,255,0.55); margin-bottom: 4px; }
+    .rel-gerado { font-size: 0.72rem; color: rgba(255,255,255,0.3); font-family: 'IBM Plex Mono', monospace; margin-top: 12px; }
+
+    .rel-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 1px; background: var(--rule); }
+    .rel-kpi { background: var(--white); padding: 24px 20px; }
+    .rel-kpi.accent { background: var(--teal-l); }
+    .rel-kpi.danger { background: var(--red-l); }
+    .rel-kpi-num { font-family: 'IBM Plex Mono', monospace; font-size: 1.4rem; font-weight: 500; color: var(--ink); margin-bottom: 4px; }
+    .rel-kpi-lbl { font-size: 0.72rem; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+
+    .rel-sec { padding: 28px 40px; border-top: 1px solid var(--rule); }
+    .rel-sec-titulo { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 16px; }
+
+    .rel-tabela { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    .rel-tabela th { text-align: left; padding: 10px 12px; background: var(--bg); color: var(--ink-3); font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--rule); }
+    .rel-tabela td { padding: 11px 12px; border-bottom: 1px solid var(--rule); color: var(--ink-2); }
+    .empty-cell { text-align: center; color: var(--ink-3); }
+
+    .rel-item { padding: 14px 0; border-bottom: 1px solid var(--rule); }
+    .rel-item:last-child { border-bottom: none; }
+    .rel-item-data { font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--ink-3); margin-bottom: 4px; }
+    .rel-item-desc { font-size: 0.85rem; color: var(--ink-2); margin-bottom: 4px; }
+    .rel-item-info { font-size: 0.75rem; color: var(--teal); font-weight: 500; }
+
+    /* ANIMATIONS */
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    @keyframes bounce { 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #tela-login, .login-card { animation: fadeUp 0.5s ease both; }
+
+    @media (max-width: 720px) {
+      .login-left { display: none; }
+      .sidebar { display: none; }
+    }
   </style>
 </head>
 <body>
 
-<!-- LOGIN -->
+<!-- ── LOGIN ── -->
 <div id="tela-login">
-  <div class="login-grid"></div>
-  <div class="login-card">
-    <div class="login-logo">
-      <div class="login-logo-icon">🧮</div>
-      <div class="login-logo-text">Contábil Inteligente<span>Área do Cliente</span></div>
+  <div class="login-left">
+    <div class="ll-marca">
+      <div class="ll-marca-icon">🧮</div>
+      Contábil Inteligente
     </div>
-    <h1 class="login-title">Bem-vindo!</h1>
-    <p class="login-sub">Acesse com o email e senha cadastrados</p>
-    <label class="campo-label" for="email">Email</label>
-    <input class="campo-input" type="email" id="email" placeholder="empresa@email.com" />
-    <label class="campo-label" for="senha">Senha</label>
-    <input class="campo-input" type="password" id="senha" placeholder="••••••••" onkeypress="enterLogin(event)" />
-    <button class="btn-login" id="btn-login" onclick="fazerLogin()">Entrar</button>
-    <div class="erro" id="erro"></div>
-    <div class="login-footer">Problemas de acesso? Entre em contato com o suporte.</div>
+    <div class="ll-body">
+      <h1 class="ll-headline">Análise fiscal<br />com <em>inteligência</em><br />artificial.</h1>
+      <p class="ll-desc">Plataforma especializada em eficiência tributária e análise agronômica para empresas de Mato Grosso.</p>
+      <div class="ll-features">
+        <div class="ll-feature"><div class="ll-feature-dot"></div> Análise de notas fiscais e laudos de solo</div>
+        <div class="ll-feature"><div class="ll-feature-dot"></div> Identificação de créditos de ICMS, PIS e COFINS</div>
+        <div class="ll-feature"><div class="ll-feature-dot"></div> Relatórios mensais de economia identificada</div>
+        <div class="ll-feature"><div class="ll-feature-dot"></div> Todos os setores de Mato Grosso</div>
+      </div>
+    </div>
+    <div class="ll-footer">contabilinteligente.api.br · © 2026</div>
+  </div>
+
+  <div class="login-right">
+    <div class="login-form">
+      <h2 class="lf-titulo">Acesso à Plataforma</h2>
+      <p class="lf-sub">Insira suas credenciais para continuar</p>
+      <label class="lf-label" for="email">Endereço de e-mail</label>
+      <input class="lf-input" type="email" id="email" placeholder="empresa@dominio.com.br" />
+      <label class="lf-label" for="senha">Senha de acesso</label>
+      <input class="lf-input" type="password" id="senha" placeholder="••••••••••••" onkeypress="enterLogin(event)" />
+      <button class="lf-btn" id="btn-login" onclick="fazerLogin()">Acessar Plataforma</button>
+      <div class="lf-erro" id="erro"></div>
+      <div class="lf-footer">Dificuldades de acesso? Entre em contato com o suporte técnico.</div>
+    </div>
   </div>
 </div>
 
-<!-- PAINEL -->
-<div id="tela-painel">
-  <header class="header">
-    <div class="header-logo">
-      <div class="header-logo-icon">🧮</div>
-      <div class="header-logo-text">Contábil Inteligente</div>
+<!-- ── APP ── -->
+<div id="tela-app">
+  <header class="topbar">
+    <div class="tb-marca">
+      <div class="tb-icon">🧮</div>
+      Contábil Inteligente
     </div>
-    <div class="header-right">
-      <div class="header-info">
-        <div class="header-nome" id="nome-empresa">...</div>
-        <div class="header-plano" id="plano-tag">...</div>
-        <div class="header-email" id="user-email"></div>
+    <div class="tb-divider"></div>
+    <span style="font-size:0.78rem;color:var(--ink-3)">Plataforma de Análise Fiscal</span>
+    <div class="tb-user">
+      <div class="tb-info">
+        <div class="tb-nome" id="hd-nome"></div>
+        <div class="tb-plano" id="hd-plano"></div>
+        <div class="tb-email" id="hd-email"></div>
       </div>
-      <button class="btn-sair" onclick="fazerLogout()">Sair</button>
+      <button class="tb-sair" onclick="fazerLogout()">Sair</button>
     </div>
   </header>
 
-  <div class="painel-body">
+  <div class="app-body">
     <aside class="sidebar">
-      <div class="sidebar-label">Menu</div>
-      <button class="nav-item ativo" onclick="trocarAba('dashboard',this)"><span class="icon">📊</span> Resumo</button>
-      <button class="nav-item" onclick="trocarAba('chat',this)"><span class="icon">🤖</span> Analisar</button>
-      <button class="nav-item" onclick="trocarAba('relatorio',this)"><span class="icon">📈</span> Relatório Mensal</button>
+      <div class="nav-grupo">Navegação</div>
+      <button class="nav-btn ativo" onclick="trocarAba('dashboard',this)"><span class="icon">▦</span> Painel</button>
+      <button class="nav-btn" onclick="trocarAba('chat',this)"><span class="icon">◈</span> Analisar</button>
+      <button class="nav-btn" onclick="trocarAba('relatorio',this)"><span class="icon">◉</span> Relatório Mensal</button>
     </aside>
 
     <main class="main">
 
       <!-- DASHBOARD -->
       <div class="aba ativa" id="aba-dashboard">
-        <div class="dash-body">
-          <h2 class="dash-titulo">Olá, <span id="dash-nome">Cliente</span>! 👋</h2>
-          <p class="dash-sub">Resumo do mês atual</p>
-          <div class="stats-grid">
-            <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-num" id="stat-analises">0</div><div class="stat-label">Análises este mês</div></div>
-            <div class="stat-card"><div class="stat-icon">📎</div><div class="stat-num" id="stat-docs">0</div><div class="stat-label">Documentos analisados</div></div>
-            <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num" id="stat-economia">R$ 0</div><div class="stat-label">Economia identificada</div></div>
-            <div class="stat-card"><div class="stat-icon">⚠️</div><div class="stat-num" id="stat-riscos">0</div><div class="stat-label">Riscos encontrados</div></div>
+        <div class="dash-scroll">
+          <div class="dash-header">
+            <h2 class="dash-titulo">Painel — <span id="dash-nome"></span></h2>
+            <p class="dash-sub">Indicadores do mês corrente</p>
           </div>
-          <div class="hist-card">
-            <div class="hist-titulo">📋 Análises recentes</div>
-            <div id="historico-lista"><p class="vazio">Nenhuma análise ainda. Comece enviando um documento!</p></div>
+          <div class="kpis">
+            <div class="kpi"><div class="kpi-icon">◈</div><div class="kpi-num" id="s-analises">0</div><div class="kpi-lbl">Análises</div></div>
+            <div class="kpi"><div class="kpi-icon">◎</div><div class="kpi-num" id="s-docs">0</div><div class="kpi-lbl">Documentos</div></div>
+            <div class="kpi"><div class="kpi-icon">◉</div><div class="kpi-num" id="s-econ">R$ 0,00</div><div class="kpi-lbl">Economia</div></div>
+            <div class="kpi"><div class="kpi-icon">△</div><div class="kpi-num" id="s-riscos">0</div><div class="kpi-lbl">Alertas</div></div>
           </div>
-          <div class="dica-card">
-            <h3>💡 Como usar</h3>
-            <p>Vá em "Analisar", anexe suas notas fiscais, laudos ou PDFs — ou cole o texto diretamente. A IA analisa tudo e salva no histórico automaticamente.</p>
-            <button class="dica-btn" onclick="trocarAba('chat',document.querySelectorAll('.nav-item')[1])">Começar análise →</button>
+          <div class="panel">
+            <div class="panel-header"><span class="panel-titulo">Histórico Recente</span></div>
+            <div id="hist-lista"><p class="empty">Nenhuma análise registrada ainda.</p></div>
+          </div>
+          <div class="dica">
+            <h3>Como utilizar a plataforma</h3>
+            <p>Acesse "Analisar" e envie suas notas fiscais, laudos de solo ou outros documentos em PDF ou imagem. A IA processa os dados, identifica oportunidades tributárias e registra automaticamente no histórico.</p>
+            <button class="dica-btn" onclick="trocarAba('chat',document.querySelectorAll('.nav-btn')[1])">Iniciar análise →</button>
           </div>
         </div>
       </div>
 
       <!-- CHAT -->
       <div class="aba" id="aba-chat">
-        <div class="chat-topbar">
+        <div class="chat-bar">
           <div class="chat-dots"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span></div>
-          <div class="chat-title-bar">IA Contábil — Anexe documentos ou cole o texto</div>
-          <div class="chat-online">Online</div>
+          <span class="chat-bar-title">ci.assistant · análise fiscal e agronômica</span>
+          <div class="chat-status">Sistema operacional</div>
         </div>
 
-        <div class="chat-mensagens" id="chat-mensagens">
-          <div class="bolha bolha-assistant">
-            <p>👋 Olá! Sou seu assistente contábil com IA.</p><br>
-            <p>Envie seus documentos para análise:</p>
-            <p>📄 Notas fiscais (foto ou PDF)</p>
-            <p>🌾 Laudos de análise de solo (PDF)</p>
-            <p>🐄 Faturas de insumos pecuários</p>
-            <p>📊 Extratos e boletos</p><br>
-            <p>Arraste arquivos ou clique em "Anexar" abaixo!</p>
+        <div class="chat-msgs" id="chat-msgs">
+          <div class="msg msg-assistant">
+            <div class="msg-avatar">CI</div>
+            <div class="msg-bubble">
+              <p>Bem-vindo à Contábil Inteligente.</p><br>
+              <p>Esta plataforma realiza análise fiscal e agronômica de documentos. Você pode enviar:</p><br>
+              <p>— Notas fiscais (imagem ou PDF)<br>— Laudos de análise de solo (PDF)<br>— Faturas de insumos e medicamentos<br>— Extratos bancários e boletos</p><br>
+              <p>Anexe os arquivos abaixo ou descreva o que deseja analisar.</p>
+            </div>
           </div>
         </div>
 
-        <!-- Drop Zone -->
         <div class="drop-zone" id="drop-zone"
-          ondragover="onDragOver(event)" ondragleave="onDragLeave()" ondrop="onDrop(event)"
+          ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)"
           onclick="selecionarArquivos()">
-          <p>📎 <strong>Clique para anexar</strong> ou arraste arquivos aqui</p>
-          <p class="limite-info" id="limite-info">Imagens (JPG, PNG) e PDFs aceitos</p>
+          <div class="dz-icon">📎</div>
+          <div class="dz-text">
+            <p><strong>Clique para selecionar</strong> ou arraste arquivos aqui</p>
+            <p class="dz-lim" id="limite-txt">Imagens e PDFs aceitos</p>
+          </div>
         </div>
 
-        <!-- Preview arquivos -->
-        <div id="arquivos-preview"></div>
+        <div id="chips-wrap"></div>
+        <div class="notif" id="notif"></div>
 
-        <!-- Aviso plano -->
-        <div id="aviso-plano"></div>
+        <input type="file" id="file-input" accept="image/*,.pdf" multiple onchange="onArquivos(this)" />
 
-        <!-- Input file oculto -->
-        <input type="file" id="file-input" accept="image/*,.pdf" multiple onchange="onArquivosSelecionados(this)" />
-
-        <div class="chat-input-area">
-          <textarea class="chat-input" id="chat-input" placeholder="Adicione instruções ou cole dados aqui (opcional)..." rows="2" onkeypress="enterChat(event)"></textarea>
-          <button class="btn-enviar" onclick="enviarMensagem()">Enviar →</button>
+        <div class="chat-input-row">
+          <textarea class="chat-input" id="chat-input" placeholder="Descreva o documento ou adicione instruções complementares..." rows="2" onkeypress="enterChat(event)"></textarea>
+          <button class="btn-enviar" onclick="enviar()">Enviar →</button>
         </div>
       </div>
 
       <!-- RELATÓRIO -->
       <div class="aba" id="aba-relatorio">
-        <div class="rel-body">
-          <div class="rel-titulo-sec">📈 Relatório Mensal</div>
-          <div id="relatorio-conteudo">
-            <div style="padding:48px;text-align:center;color:var(--gray-mid)">
-              <div style="font-size:2rem;margin-bottom:12px">📊</div>
-              <p>Carregando relatório...</p>
+        <div class="rel-scroll">
+          <div class="rel-page" id="rel-conteudo">
+            <div style="padding:48px;text-align:center;color:var(--ink-3)">
+              <p style="font-family:'IBM Plex Mono',monospace;font-size:0.85rem">Carregando relatório...</p>
             </div>
           </div>
         </div>
