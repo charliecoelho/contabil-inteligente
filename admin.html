@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contábil Inteligente | Administração</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, deleteUser } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, query, orderBy, where, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDuOOQEBgaoZuNUMvLrUN3DPetG1mnQTeg",
+      authDomain: "contabil-inteligente.firebaseapp.com",
+      projectId: "contabil-inteligente",
+      storageBucket: "contabil-inteligente.firebasestorage.app",
+      messagingSenderId: "254707935067",
+      appId: "1:254707935067:web:aa602726f8a701baf75c7e",
+      measurementId: "G-XEETQDTSN3"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // UID do administrador — substitua pelo seu UID
+    const ADMIN_UID = "COLE_SEU_UID_AQUI";
+
+    window.APP = { clientes: [], analises: [] };
+
+    // ── AUTH ──
+    window.fazerLogin = async () => {
+      const email = document.getElementById('email').value;
+      const senha = document.getElementById('senha').value;
+      const btn = document.getElementById('btn-login');
+      const erro = document.getElementById('erro');
+      erro.style.display = 'none';
+      if (!email || !senha) { erro.textContent = 'Preencha todos os campos.'; erro.style.display = 'block'; return; }
+      btn.disabled = true; btn.textContent = 'Autenticando...';
+      try { await signInWithEmailAndPassword(auth, email, senha); }
+      catch(e) { erro.textContent = 'Credenciais inválidas.'; erro.style.display = 'block'; btn.disabled = false; btn.textContent = 'Acessar'; }
+    };
+
+    window.fazerLogout = async () => { await signOut(auth); };
+    window.enterLogin = (e) => { if (e.key === 'Enter') window.fazerLogin(); };
+
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // Verificar se é admin
+        if (ADMIN_UID !== "COLE_SEU_UID_AQUI" && user.uid !== ADMIN_UID) {
+          await signOut(auth);
+          document.getElementById('erro').textContent = 'Acesso restrito ao administrador.';
+          document.getElementById('erro').style.display = 'block';
+          return;
+        }
+        document.getElementById('tela-login').style.display = 'none';
+        document.getElementById('tela-admin').style.display = 'flex';
+        document.getElementById('admin-email').textContent = user.email;
+        await carregarDados();
+      } else {
+        document.getElementById('tela-login').style.display = 'flex';
+        document.getElementById('tela-admin').style.display = 'none';
+      }
+    });
+
+    // ── NAVEGAÇÃO ──
+    window.trocarAba = (aba, btn) => {
+      document.querySelectorAll('.aba').forEach(a => a.classList.remove('ativa'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('ativo'));
+      document.getElementById('aba-' + aba).classList.add('ativa');
+      btn.classList.add('ativo');
+    };
+
+    // ── CARREGAR DADOS ──
+    async function carregarDados() {
+      mostrarLoading(true);
+      try {
+        // Carregar clientes do Firestore
+        const snap = await getDocs(collection(db, 'clientes'));
+        window.APP.clientes = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+
+        // Carregar análises
+        const snapA = await getDocs(query(collection(db, 'analises'), orderBy('data', 'desc')));
+        window.APP.analises = snapA.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        atualizarDashboard();
+        renderClientes();
+        renderHistorico();
+      } catch(e) {
+        mostrarNotif('Erro ao carregar dados: ' + e.message, 'erro');
+      }
+      mostrarLoading(false);
+    }
+
+    function mostrarLoading(show) {
+      document.getElementById('loading').style.display = show ? 'flex' : 'none';
+    }
+
+    // ── DASHBOARD ──
+    function atualizarDashboard() {
+      const clientes = window.APP.clientes;
+      const analises = window.APP.analises;
+      const agora = new Date();
+      const mesAtual = analises.filter(a => a.mes === agora.getMonth()+1 && a.ano === agora.getFullYear());
+      const plus = clientes.filter(c => (c.plano||'').toLowerCase().includes('plus')).length;
+      const basico = clientes.length - plus;
+      const receitaEst = (plus * 397) + (basico * 197);
+      const econ = mesAtual.reduce((s,a) => s+(a.economia||0), 0);
+
+      document.getElementById('d-clientes').textContent = clientes.length;
+      document.getElementById('d-plus').textContent = plus;
+      document.getElementById('d-basico').textContent = basico;
+      document.getElementById('d-analises').textContent = mesAtual.length;
+      document.getElementById('d-receita').textContent = `R$ ${receitaEst.toLocaleString('pt-BR')}`;
+      document.getElementById('d-econ').textContent = `R$ ${econ.toLocaleString('pt-BR', {minimumFractionDigits:2})}`;
+    }
+
+    // ── CLIENTES ──
+    function renderClientes(filtro = '') {
+      const lista = document.getElementById('lista-clientes');
+      let clientes = window.APP.clientes;
+      if (filtro) clientes = clientes.filter(c =>
+        (c.nomeEmpresa||'').toLowerCase().includes(filtro.toLowerCase()) ||
+        (c.email||'').toLowerCase().includes(filtro.toLowerCase())
+      );
+
+      if (!clientes.length) {
+        lista.innerHTML = '<div class="empty-state">Nenhum cliente encontrado.</div>';
+        return;
+      }
+
+      lista.innerHTML = clientes.map(c => {
+        const analises = window.APP.analises.filter(a => a.uid === c.uid);
+        const agora = new Date();
+        const mes = analises.filter(a => a.mes === agora.getMonth()+1 && a.ano === agora.getFullYear());
+        const isPlus = (c.plano||'').toLowerCase().includes('plus');
+        return `
+          <div class="cliente-row">
+            <div class="cliente-avatar">${(c.nomeEmpresa||'?')[0].toUpperCase()}</div>
+            <div class="cliente-info">
+              <div class="cliente-nome">${c.nomeEmpresa || 'Sem nome'}</div>
+              <div class="cliente-email">${c.email || c.uid}</div>
+            </div>
+            <div class="cliente-plano">
+              <span class="plano-badge ${isPlus ? 'plus' : 'basico'}">${c.plano || 'Básico'}</span>
+            </div>
+            <div class="cliente-stats">
+              <span>${mes.length} análises/mês</span>
+              <span>${analises.length} total</span>
+            </div>
+            <div class="cliente-acoes">
+              <button class="btn-acao btn-editar" onclick="abrirEditar('${c.uid}')">Editar</button>
+              <button class="btn-acao btn-excluir" onclick="confirmarExcluir('${c.uid}', '${c.nomeEmpresa||''}')">Excluir</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    window.filtrarClientes = (val) => renderClientes(val);
+
+    // ── ADICIONAR CLIENTE ──
+    window.abrirModal = (tipo) => {
+      document.getElementById('modal-' + tipo).style.display = 'flex';
+    };
+
+    window.fecharModal = (tipo) => {
+      document.getElementById('modal-' + tipo).style.display = 'none';
+      if (tipo === 'adicionar') {
+        document.getElementById('f-nome').value = '';
+        document.getElementById('f-email').value = '';
+        document.getElementById('f-senha').value = '';
+        document.getElementById('f-plano').value = 'Básico';
+        document.getElementById('f-erro').style.display = 'none';
+      }
+    };
+
+    window.adicionarCliente = async () => {
+      const nome = document.getElementById('f-nome').value.trim();
+      const email = document.getElementById('f-email').value.trim();
+      const senha = document.getElementById('f-senha').value.trim();
+      const plano = document.getElementById('f-plano').value;
+      const erro = document.getElementById('f-erro');
+      const btn = document.getElementById('btn-adicionar');
+
+      if (!nome || !email || !senha) { erro.textContent = 'Preencha todos os campos.'; erro.style.display = 'block'; return; }
+      if (senha.length < 6) { erro.textContent = 'Senha mínima de 6 caracteres.'; erro.style.display = 'block'; return; }
+
+      btn.disabled = true; btn.textContent = 'Criando...';
+      erro.style.display = 'none';
+
+      try {
+        // Criar usuário no Authentication
+        const cred = await createUserWithEmailAndPassword(auth, email, senha);
+        const uid = cred.user.uid;
+
+        // Salvar no Firestore
+        await setDoc(doc(db, 'clientes', uid), {
+          nomeEmpresa: nome,
+          email: email,
+          plano: plano,
+          dataCadastro: new Date().toISOString()
+        });
+
+        mostrarNotif(`Cliente "${nome}" cadastrado com sucesso!`, 'ok');
+        fecharModal('adicionar');
+        await carregarDados();
+      } catch(e) {
+        let msg = 'Erro ao criar cliente.';
+        if (e.code === 'auth/email-already-in-use') msg = 'Este e-mail já está cadastrado.';
+        if (e.code === 'auth/invalid-email') msg = 'E-mail inválido.';
+        erro.textContent = msg;
+        erro.style.display = 'block';
+      }
+
+      btn.disabled = false; btn.textContent = 'Cadastrar Cliente';
+    };
+
+    // ── EDITAR CLIENTE ──
+    window.abrirEditar = (uid) => {
+      const cliente = window.APP.clientes.find(c => c.uid === uid);
+      if (!cliente) return;
+      document.getElementById('e-uid').value = uid;
+      document.getElementById('e-nome').value = cliente.nomeEmpresa || '';
+      document.getElementById('e-plano').value = cliente.plano || 'Básico';
+      document.getElementById('e-erro').style.display = 'none';
+      document.getElementById('modal-editar').style.display = 'flex';
+    };
+
+    window.salvarEdicao = async () => {
+      const uid = document.getElementById('e-uid').value;
+      const nome = document.getElementById('e-nome').value.trim();
+      const plano = document.getElementById('e-plano').value;
+      const erro = document.getElementById('e-erro');
+      const btn = document.getElementById('btn-salvar');
+
+      if (!nome) { erro.textContent = 'Nome é obrigatório.'; erro.style.display = 'block'; return; }
+
+      btn.disabled = true; btn.textContent = 'Salvando...';
+
+      try {
+        await updateDoc(doc(db, 'clientes', uid), { nomeEmpresa: nome, plano: plano });
+        mostrarNotif('Cliente atualizado com sucesso!', 'ok');
+        fecharModal('editar');
+        await carregarDados();
+      } catch(e) {
+        erro.textContent = 'Erro ao salvar: ' + e.message;
+        erro.style.display = 'block';
+      }
+
+      btn.disabled = false; btn.textContent = 'Salvar';
+    };
+
+    // ── EXCLUIR CLIENTE ──
+    window.confirmarExcluir = (uid, nome) => {
+      document.getElementById('excluir-nome').textContent = nome || uid;
+      document.getElementById('excluir-uid').value = uid;
+      document.getElementById('modal-excluir').style.display = 'flex';
+    };
+
+    window.excluirCliente = async () => {
+      const uid = document.getElementById('excluir-uid').value;
+      const btn = document.getElementById('btn-excluir');
+      btn.disabled = true; btn.textContent = 'Excluindo...';
+
+      try {
+        await deleteDoc(doc(db, 'clientes', uid));
+        mostrarNotif('Cliente removido.', 'ok');
+        fecharModal('excluir');
+        await carregarDados();
+      } catch(e) {
+        mostrarNotif('Erro ao excluir: ' + e.message, 'erro');
+      }
+
+      btn.disabled = false; btn.textContent = 'Excluir';
+    };
+
+    // ── HISTÓRICO ──
+    function renderHistorico(filtro = '') {
+      const lista = document.getElementById('lista-historico');
+      let analises = window.APP.analises;
+      if (filtro) analises = analises.filter(a =>
+        (a.empresa||'').toLowerCase().includes(filtro.toLowerCase()) ||
+        (a.pergunta||'').toLowerCase().includes(filtro.toLowerCase())
+      );
+
+      if (!analises.length) {
+        lista.innerHTML = '<div class="empty-state">Nenhuma análise registrada.</div>';
+        return;
+      }
+
+      lista.innerHTML = analises.slice(0, 50).map(a => `
+        <div class="hist-row">
+          <div class="hist-data">${new Date(a.data).toLocaleDateString('pt-BR')}<br><span>${new Date(a.data).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})}</span></div>
+          <div class="hist-empresa">${a.empresa || '—'}<span class="hist-plano-badge ${(a.plano||'').toLowerCase().includes('plus')?'plus':'basico'}">${a.plano||'Básico'}</span></div>
+          <div class="hist-desc">${(a.pergunta||'').substring(0,70)}...</div>
+          <div class="hist-badges">
+            ${a.numArqs>0?`<span class="badge badge-blue">${a.numArqs} arq.</span>`:''}
+            ${a.economia>0?`<span class="badge badge-green">R$ ${a.economia.toLocaleString('pt-BR')}</span>`:''}
+            ${a.temRisco?`<span class="badge badge-red">Risco</span>`:''}
+          </div>
+        </div>`).join('');
+    }
+
+    window.filtrarHistorico = (val) => renderHistorico(val);
+
+    // ── NOTIFICAÇÃO ──
+    function mostrarNotif(msg, tipo = 'ok') {
+      const n = document.getElementById('notif');
+      n.textContent = msg;
+      n.className = `notif notif-${tipo}`;
+      n.style.display = 'block';
+      setTimeout(() => n.style.display = 'none', 3500);
+    }
+
+    // Fechar modal clicando fora
+    window.onclick = (e) => {
+      ['modal-adicionar', 'modal-editar', 'modal-excluir'].forEach(id => {
+        const el = document.getElementById(id);
+        if (e.target === el) el.style.display = 'none';
+      });
+    };
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --ink:     #0F1923;
+      --ink-2:   #2C3A4A;
+      --ink-3:   #5C6B7A;
+      --rule:    #DDE3EA;
+      --bg:      #F7F8FA;
+      --bg-2:    #ECEEF2;
+      --white:   #FFFFFF;
+      --teal:    #0A6E6E;
+      --teal-l:  #D6EFEF;
+      --gold:    #B8960C;
+      --gold-l:  #FBF5DC;
+      --red:     #B91C1C;
+      --red-l:   #FEE2E2;
+      --blue:    #1D4ED8;
+      --blue-l:  #DBEAFE;
+      --green:   #15803D;
+      --green-l: #DCFCE7;
+    }
+
+    html, body { height: 100%; font-family: 'IBM Plex Sans', sans-serif; background: var(--bg); color: var(--ink); overflow: hidden; }
+
+    /* ── LOGIN ── */
+    #tela-login {
+      display: flex; height: 100vh; align-items: center; justify-content: center;
+      background: var(--ink);
+    }
+
+    .login-box {
+      background: var(--white); border-radius: 8px; padding: 48px 44px;
+      width: 100%; max-width: 400px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.3);
+    }
+
+    .login-marca {
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .login-titulo {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.6rem; color: var(--ink); margin-bottom: 6px;
+    }
+
+    .login-sub { font-size: 0.82rem; color: var(--ink-3); margin-bottom: 32px; }
+
+    .lbl { display: block; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 8px; }
+
+    .inp {
+      width: 100%; border: 1px solid var(--rule); border-radius: 4px;
+      padding: 12px 14px; font-size: 0.9rem; font-family: 'IBM Plex Sans', sans-serif;
+      color: var(--ink); outline: none; background: var(--bg); margin-bottom: 18px;
+      transition: border-color 0.2s;
+    }
+    .inp:focus { border-color: var(--ink); background: var(--white); }
+
+    .btn-primary {
+      width: 100%; background: var(--ink); color: var(--white);
+      font-family: 'IBM Plex Sans', sans-serif; font-weight: 600;
+      font-size: 0.88rem; padding: 13px; border: none; border-radius: 4px;
+      cursor: pointer; letter-spacing: 0.04em; transition: background 0.2s;
+    }
+    .btn-primary:hover { background: var(--ink-2); }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .login-erro {
+      display: none; font-size: 0.8rem; color: var(--red);
+      background: var(--red-l); border: 1px solid #FECACA;
+      padding: 10px 14px; border-radius: 4px; margin-top: 14px;
+    }
+
+    /* ── APP ── */
+    #tela-admin { display: none; height: 100vh; flex-direction: column; }
+
+    .topbar {
+      height: 52px; background: var(--ink); border-bottom: 1px solid rgba(255,255,255,0.08);
+      display: flex; align-items: center; padding: 0 24px; gap: 12px; flex-shrink: 0;
+    }
+
+    .tb-marca {
+      font-family: 'Playfair Display', serif; font-size: 1rem; color: var(--white);
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .tb-icon { width: 26px; height: 26px; background: var(--gold); border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+
+    .tb-badge {
+      font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em;
+      text-transform: uppercase; background: rgba(184,150,12,0.2);
+      color: var(--gold); padding: 3px 8px; border-radius: 3px;
+      border: 1px solid rgba(184,150,12,0.3);
+    }
+
+    .tb-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+    .tb-email { font-size: 0.78rem; color: rgba(255,255,255,0.45); font-family: 'IBM Plex Mono', monospace; }
+
+    .btn-sair {
+      font-size: 0.75rem; color: rgba(255,255,255,0.5); background: none;
+      border: 1px solid rgba(255,255,255,0.15); padding: 5px 12px; border-radius: 4px;
+      cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; transition: all 0.2s;
+    }
+    .btn-sair:hover { border-color: rgba(255,255,255,0.4); color: var(--white); }
+
+    .app-body { display: flex; flex: 1; overflow: hidden; }
+
+    .sidebar {
+      width: 210px; background: var(--white); border-right: 1px solid var(--rule);
+      padding: 20px 12px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px;
+    }
+
+    .nav-grupo { font-size: 0.65rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); padding: 8px 12px 6px; margin-top: 4px; }
+
+    .nav-btn {
+      display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 4px;
+      font-size: 0.85rem; color: var(--ink-2); cursor: pointer; transition: all 0.15s;
+      font-weight: 400; border: none; background: none; width: 100%; text-align: left;
+      font-family: 'IBM Plex Sans', sans-serif;
+    }
+    .nav-btn:hover { background: var(--bg); color: var(--ink); }
+    .nav-btn.ativo { background: var(--ink); color: var(--white); font-weight: 500; }
+
+    .main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+    .aba { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+    .aba.ativa { display: flex; }
+
+    .content { flex: 1; overflow-y: auto; padding: 28px; }
+
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+    .page-titulo { font-family: 'Playfair Display', serif; font-size: 1.4rem; color: var(--ink); }
+    .page-sub { font-size: 0.82rem; color: var(--ink-3); margin-top: 2px; }
+
+    /* DASHBOARD */
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin-bottom: 24px; }
+    .kpi { background: var(--white); padding: 20px; }
+    .kpi-num { font-family: 'IBM Plex Mono', monospace; font-size: 1.8rem; font-weight: 500; color: var(--ink); line-height: 1; }
+    .kpi-lbl { font-size: 0.72rem; color: var(--ink-3); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .kpi.accent { background: var(--teal-l); }
+    .kpi.gold { background: var(--gold-l); }
+
+    /* CLIENTES */
+    .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+
+    .search-inp {
+      flex: 1; border: 1px solid var(--rule); border-radius: 4px;
+      padding: 9px 14px; font-size: 0.85rem; font-family: 'IBM Plex Sans', sans-serif;
+      color: var(--ink); outline: none; background: var(--white);
+    }
+    .search-inp:focus { border-color: var(--ink); }
+
+    .btn-add {
+      background: var(--ink); color: var(--white); font-family: 'IBM Plex Sans', sans-serif;
+      font-weight: 600; font-size: 0.82rem; padding: 9px 18px; border: none;
+      border-radius: 4px; cursor: pointer; white-space: nowrap; transition: background 0.2s;
+    }
+    .btn-add:hover { background: var(--ink-2); }
+
+    .table-wrap { background: var(--white); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+
+    .table-header {
+      display: grid; grid-template-columns: 48px 1fr 120px 160px 160px;
+      padding: 10px 20px; background: var(--bg);
+      border-bottom: 1px solid var(--rule);
+      font-size: 0.68rem; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--ink-3);
+    }
+
+    .cliente-row {
+      display: grid; grid-template-columns: 48px 1fr 120px 160px 160px;
+      align-items: center; padding: 14px 20px;
+      border-bottom: 1px solid var(--rule); transition: background 0.15s;
+    }
+    .cliente-row:last-child { border-bottom: none; }
+    .cliente-row:hover { background: var(--bg); }
+
+    .cliente-avatar {
+      width: 34px; height: 34px; background: var(--ink); color: var(--white);
+      border-radius: 4px; display: flex; align-items: center; justify-content: center;
+      font-size: 0.82rem; font-weight: 600; font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .cliente-nome { font-size: 0.88rem; font-weight: 500; color: var(--ink); }
+    .cliente-email { font-size: 0.75rem; color: var(--ink-3); font-family: 'IBM Plex Mono', monospace; margin-top: 2px; }
+
+    .plano-badge {
+      font-size: 0.68rem; font-weight: 600; padding: 3px 8px; border-radius: 3px;
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .plano-badge.plus { background: var(--gold-l); color: var(--gold); border: 1px solid #E8D066; }
+    .plano-badge.basico { background: var(--bg-2); color: var(--ink-3); border: 1px solid var(--rule); }
+
+    .cliente-stats { font-size: 0.75rem; color: var(--ink-3); display: flex; flex-direction: column; gap: 2px; font-family: 'IBM Plex Mono', monospace; }
+
+    .cliente-acoes { display: flex; gap: 8px; }
+    .btn-acao { font-size: 0.75rem; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; font-weight: 500; border: 1px solid; transition: all 0.15s; }
+    .btn-editar { background: var(--blue-l); color: var(--blue); border-color: #BFDBFE; }
+    .btn-editar:hover { background: var(--blue); color: var(--white); }
+    .btn-excluir { background: var(--red-l); color: var(--red); border-color: #FECACA; }
+    .btn-excluir:hover { background: var(--red); color: var(--white); }
+
+    /* HISTÓRICO */
+    .hist-header {
+      display: grid; grid-template-columns: 90px 160px 1fr 180px;
+      padding: 10px 20px; background: var(--bg); border-bottom: 1px solid var(--rule);
+      font-size: 0.68rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3);
+    }
+
+    .hist-row {
+      display: grid; grid-template-columns: 90px 160px 1fr 180px;
+      align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--rule);
+      transition: background 0.15s;
+    }
+    .hist-row:hover { background: var(--bg); }
+    .hist-row:last-child { border-bottom: none; }
+
+    .hist-data { font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--ink-2); line-height: 1.4; }
+    .hist-data span { color: var(--ink-3); }
+    .hist-empresa { font-size: 0.82rem; font-weight: 500; color: var(--ink); display: flex; flex-direction: column; gap: 4px; }
+    .hist-plano-badge { font-size: 0.62rem; font-weight: 600; padding: 2px 6px; border-radius: 2px; letter-spacing: 0.06em; text-transform: uppercase; align-self: flex-start; }
+    .hist-plano-badge.plus { background: var(--gold-l); color: var(--gold); }
+    .hist-plano-badge.basico { background: var(--bg-2); color: var(--ink-3); }
+    .hist-desc { font-size: 0.8rem; color: var(--ink-3); padding-right: 16px; }
+    .hist-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .badge { font-size: 0.68rem; font-weight: 600; padding: 3px 7px; border-radius: 3px; }
+    .badge-blue { background: var(--blue-l); color: var(--blue); }
+    .badge-green { background: var(--green-l); color: var(--green); }
+    .badge-red { background: var(--red-l); color: var(--red); }
+
+    .empty-state { padding: 40px; text-align: center; font-size: 0.85rem; color: var(--ink-3); }
+
+    /* MODAIS */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(15,25,35,0.6); z-index: 100;
+      align-items: center; justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+
+    .modal {
+      background: var(--white); border-radius: 8px; padding: 36px;
+      width: 100%; max-width: 440px; box-shadow: 0 24px 80px rgba(0,0,0,0.2);
+    }
+
+    .modal-titulo { font-family: 'Playfair Display', serif; font-size: 1.3rem; color: var(--ink); margin-bottom: 6px; }
+    .modal-sub { font-size: 0.82rem; color: var(--ink-3); margin-bottom: 28px; }
+
+    .modal-acoes { display: flex; gap: 10px; margin-top: 24px; }
+
+    .btn-sec {
+      flex: 1; background: var(--bg); color: var(--ink-2); font-family: 'IBM Plex Sans', sans-serif;
+      font-weight: 500; font-size: 0.85rem; padding: 11px; border: 1px solid var(--rule);
+      border-radius: 4px; cursor: pointer; transition: background 0.2s;
+    }
+    .btn-sec:hover { background: var(--bg-2); }
+
+    .btn-danger {
+      flex: 1; background: var(--red); color: var(--white); font-family: 'IBM Plex Sans', sans-serif;
+      font-weight: 600; font-size: 0.85rem; padding: 11px; border: none;
+      border-radius: 4px; cursor: pointer; transition: background 0.2s;
+    }
+    .btn-danger:hover { background: #991B1B; }
+    .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .f-erro {
+      display: none; font-size: 0.8rem; color: var(--red);
+      background: var(--red-l); border: 1px solid #FECACA;
+      padding: 10px 14px; border-radius: 4px; margin-top: 12px;
+    }
+
+    /* NOTIF */
+    .notif {
+      display: none; position: fixed; bottom: 24px; right: 24px;
+      padding: 12px 20px; border-radius: 6px; font-size: 0.85rem;
+      font-weight: 500; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    }
+    .notif-ok { background: var(--green-l); color: var(--green); border: 1px solid #BBF7D0; }
+    .notif-erro { background: var(--red-l); color: var(--red); border: 1px solid #FECACA; }
+
+    /* LOADING */
+    #loading {
+      display: none; position: fixed; inset: 0; background: rgba(255,255,255,0.8);
+      z-index: 300; align-items: center; justify-content: center;
+      font-size: 0.85rem; color: var(--ink-3); gap: 12px; flex-direction: column;
+    }
+
+    .spinner { width: 28px; height: 28px; border: 3px solid var(--rule); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.7s linear infinite; }
+
+    .select-inp {
+      width: 100%; border: 1px solid var(--rule); border-radius: 4px;
+      padding: 12px 14px; font-size: 0.9rem; font-family: 'IBM Plex Sans', sans-serif;
+      color: var(--ink); outline: none; background: var(--bg); margin-bottom: 18px;
+      transition: border-color 0.2s; appearance: none; cursor: pointer;
+    }
+    .select-inp:focus { border-color: var(--ink); background: var(--white); }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 768px) { .sidebar { display: none; } .table-header, .cliente-row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  <div class="spinner"></div>
+  <span>Carregando dados...</span>
+</div>
+
+<!-- NOTIF -->
+<div class="notif" id="notif"></div>
+
+<!-- LOGIN -->
+<div id="tela-login">
+  <div class="login-box">
+    <div class="login-marca">Contábil Inteligente · Administração</div>
+    <h2 class="login-titulo">Acesso Restrito</h2>
+    <p class="login-sub">Área exclusiva do administrador</p>
+    <label class="lbl" for="email">E-mail</label>
+    <input class="inp" type="email" id="email" placeholder="admin@email.com" />
+    <label class="lbl" for="senha">Senha</label>
+    <input class="inp" type="password" id="senha" placeholder="••••••••" onkeypress="enterLogin(event)" />
+    <button class="btn-primary" id="btn-login" onclick="fazerLogin()">Acessar</button>
+    <div class="login-erro" id="erro"></div>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div id="tela-admin">
+  <header class="topbar">
+    <div class="tb-marca">
+      <div class="tb-icon">🧮</div>
+      Contábil Inteligente
+    </div>
+    <span class="tb-badge">Admin</span>
+    <div class="tb-right">
+      <span class="tb-email" id="admin-email"></span>
+      <button class="btn-sair" onclick="fazerLogout()">Sair</button>
+    </div>
+  </header>
+
+  <div class="app-body">
+    <aside class="sidebar">
+      <div class="nav-grupo">Painel</div>
+      <button class="nav-btn ativo" onclick="trocarAba('dashboard', this)">▦ Visão Geral</button>
+      <div class="nav-grupo">Gestão</div>
+      <button class="nav-btn" onclick="trocarAba('clientes', this)">◈ Clientes</button>
+      <button class="nav-btn" onclick="trocarAba('historico', this)">◉ Histórico</button>
+    </aside>
+
+    <main class="main">
+
+      <!-- DASHBOARD -->
+      <div class="aba ativa" id="aba-dashboard">
+        <div class="content">
+          <div class="page-header">
+            <div>
+              <div class="page-titulo">Visão Geral</div>
+              <div class="page-sub">Indicadores do mês corrente</div>
+            </div>
+            <button class="btn-add" onclick="carregarDados()">↺ Atualizar</button>
+          </div>
+
+          <div class="kpis">
+            <div class="kpi"><div class="kpi-num" id="d-clientes">—</div><div class="kpi-lbl">Clientes ativos</div></div>
+            <div class="kpi gold"><div class="kpi-num" id="d-plus">—</div><div class="kpi-lbl">Plano Plus</div></div>
+            <div class="kpi"><div class="kpi-num" id="d-basico">—</div><div class="kpi-lbl">Plano Básico</div></div>
+            <div class="kpi"><div class="kpi-num" id="d-analises">—</div><div class="kpi-lbl">Análises/mês</div></div>
+            <div class="kpi accent"><div class="kpi-num" id="d-receita">—</div><div class="kpi-lbl">Receita estimada</div></div>
+            <div class="kpi accent"><div class="kpi-num" id="d-econ">—</div><div class="kpi-lbl">Economia gerada</div></div>
+          </div>
+
+          <div style="background:var(--white);border:1px solid var(--rule);border-radius:6px;padding:20px;margin-top:4px">
+            <div style="font-size:0.72rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:12px">Acesso Rápido</div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap">
+              <button class="btn-add" onclick="trocarAba('clientes',document.querySelectorAll('.nav-btn')[1]);abrirModal('adicionar')">+ Novo Cliente</button>
+              <button class="btn-add" style="background:var(--teal)" onclick="trocarAba('historico',document.querySelectorAll('.nav-btn')[2])">Ver Histórico</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CLIENTES -->
+      <div class="aba" id="aba-clientes">
+        <div class="content">
+          <div class="page-header">
+            <div>
+              <div class="page-titulo">Clientes</div>
+              <div class="page-sub">Gerencie os acessos à plataforma</div>
+            </div>
+            <button class="btn-add" onclick="abrirModal('adicionar')">+ Novo Cliente</button>
+          </div>
+
+          <div class="toolbar">
+            <input class="search-inp" type="text" placeholder="Buscar por nome ou e-mail..." oninput="filtrarClientes(this.value)" />
+          </div>
+
+          <div class="table-wrap">
+            <div class="table-header">
+              <div></div>
+              <div>Cliente</div>
+              <div>Plano</div>
+              <div>Uso</div>
+              <div>Ações</div>
+            </div>
+            <div id="lista-clientes">
+              <div class="empty-state">Carregando...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HISTÓRICO -->
+      <div class="aba" id="aba-historico">
+        <div class="content">
+          <div class="page-header">
+            <div>
+              <div class="page-titulo">Histórico de Análises</div>
+              <div class="page-sub">Todas as análises realizadas pelos clientes</div>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <input class="search-inp" type="text" placeholder="Buscar por empresa ou conteúdo..." oninput="filtrarHistorico(this.value)" />
+          </div>
+
+          <div class="table-wrap">
+            <div class="hist-header">
+              <div>Data</div>
+              <div>Empresa</div>
+              <div>Análise</div>
+              <div>Resultados</div>
+            </div>
+            <div id="lista-historico">
+              <div class="empty-state">Carregando...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- MODAL: ADICIONAR CLIENTE -->
+<div class="modal-overlay" id="modal-adicionar">
+  <div class="modal">
+    <div class="modal-titulo">Novo Cliente</div>
+    <div class="modal-sub">Preencha os dados para criar o acesso</div>
+
+    <label class="lbl">Nome da Empresa</label>
+    <input class="inp" type="text" id="f-nome" placeholder="Empresa Exemplo Ltda" />
+
+    <label class="lbl">E-mail de Acesso</label>
+    <input class="inp" type="email" id="f-email" placeholder="contato@empresa.com.br" />
+
+    <label class="lbl">Senha Inicial</label>
+    <input class="inp" type="text" id="f-senha" placeholder="Mínimo 6 caracteres" />
+
+    <label class="lbl">Plano</label>
+    <select class="select-inp" id="f-plano">
+      <option value="Básico">Básico — R$ 197/mês (até 2 arquivos)</option>
+      <option value="Plus">Plus — R$ 397/mês (até 6 arquivos)</option>
+    </select>
+
+    <div class="f-erro" id="f-erro"></div>
+
+    <div class="modal-acoes">
+      <button class="btn-sec" onclick="fecharModal('adicionar')">Cancelar</button>
+      <button class="btn-primary" id="btn-adicionar" onclick="adicionarCliente()" style="flex:1">Cadastrar Cliente</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EDITAR CLIENTE -->
+<div class="modal-overlay" id="modal-editar">
+  <div class="modal">
+    <div class="modal-titulo">Editar Cliente</div>
+    <div class="modal-sub">Altere os dados do cliente</div>
+
+    <input type="hidden" id="e-uid" />
+
+    <label class="lbl">Nome da Empresa</label>
+    <input class="inp" type="text" id="e-nome" />
+
+    <label class="lbl">Plano</label>
+    <select class="select-inp" id="e-plano">
+      <option value="Básico">Básico — R$ 197/mês (até 2 arquivos)</option>
+      <option value="Plus">Plus — R$ 397/mês (até 6 arquivos)</option>
+    </select>
+
+    <div class="f-erro" id="e-erro"></div>
+
+    <div class="modal-acoes">
+      <button class="btn-sec" onclick="fecharModal('editar')">Cancelar</button>
+      <button class="btn-primary" id="btn-salvar" onclick="salvarEdicao()" style="flex:1">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EXCLUIR -->
+<div class="modal-overlay" id="modal-excluir">
+  <div class="modal">
+    <div class="modal-titulo">Excluir Cliente</div>
+    <div class="modal-sub">Esta ação não pode ser desfeita.</div>
+    <input type="hidden" id="excluir-uid" />
+    <p style="font-size:0.88rem;color:var(--ink-2);background:var(--red-l);border:1px solid #FECACA;padding:14px;border-radius:4px">
+      Deseja realmente excluir o cliente <strong id="excluir-nome"></strong>? O histórico de análises será mantido.
+    </p>
+    <div class="modal-acoes">
+      <button class="btn-sec" onclick="fecharModal('excluir')">Cancelar</button>
+      <button class="btn-danger" id="btn-excluir" onclick="excluirCliente()">Excluir</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
