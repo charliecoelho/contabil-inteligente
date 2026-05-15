@@ -95,14 +95,15 @@
     };
 
     function renderArquivos() {
-      const el = document.getElementById('chips');
+      const el = document.getElementById('chips-wrap');
+      if (!el) return;
       el.innerHTML = window.APP.arquivos.map((f,i) => `
         <div class="chip">
           <span>${f.type==='application/pdf'?'PDF':'IMG'}</span>
           <span class="chip-nome">${f.name.length>18?f.name.substring(0,18)+'…':f.name}</span>
           <button onclick="remArquivo(${i})">×</button>
         </div>`).join('');
-      document.getElementById('chips-wrap').style.display = window.APP.arquivos.length ? 'flex' : 'none';
+      el.style.display = window.APP.arquivos.length ? 'flex' : 'none';
     }
 
     window.remArquivo = (i) => { window.APP.arquivos.splice(i,1); renderArquivos(); };
