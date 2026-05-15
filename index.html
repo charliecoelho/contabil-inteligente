@@ -148,9 +148,9 @@
         content.push({type:'text',text: txt || 'Analise os documentos anexados.'});
         window.APP.conversa.push({role:'user',content});
 
-        const resp = await fetch('https://api.anthropic.com/v1/messages',{
+        const resp = await fetch('/api/chat',{
           method:'POST',
-          headers:{'Content-Type':'application/json','x-api-key':window.APP.CLAUDE_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-calls':'true'},
+          headers:{'Content-Type':'application/json',},
           body: JSON.stringify({
             model:'claude-sonnet-4-6', max_tokens:4096,
             system:`Você é o Assistente Especializado da Contábil Inteligente, plataforma de análise fiscal e agronômica para empresas de Mato Grosso (até 350km de Cuiabá).
