@@ -1,0 +1,167 @@
+<!-- ============================================================
+     CONTÁBIL INTELIGENTE — Camera Modal + Botão
+     
+     INSTRUÇÕES:
+     1. Cole o bloco do BOTÃO dentro da sua área de upload
+     2. Cole o MODAL antes do </body>
+     3. Cole os SCRIPTS antes do </body>, após o modal
+     ============================================================ -->
+
+
+<!-- ─── BLOCO 1: Botão câmera (cole dentro da área de upload) ─────────────── -->
+<div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:12px;">
+
+  <!-- Botão existente de seleção de arquivo (mantenha o seu) -->
+  <!-- <button id="btn-select-file">Selecionar arquivo</button> -->
+
+  <!-- Botão câmera — aparece só no mobile via JS + CSS -->
+  <button
+    id="btn-open-camera"
+    class="btn-camera mobile-camera-only"
+    style="display:none;"
+    aria-label="Tirar foto com a câmera"
+    title="Tirar foto com a câmera"
+  >
+    <!-- Ícone câmera (SVG inline) -->
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+         viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8
+               a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+      <circle cx="12" cy="13" r="4"/>
+    </svg>
+    Tirar Foto
+  </button>
+
+  <!-- Contador de arquivos (atualizado por camera.js) -->
+  <span id="camera-photo-count" style="font-size:13px; color:#6b7280;"></span>
+</div>
+
+<!-- Preview das fotos capturadas (populado por camera.js) -->
+<div id="camera-preview-bar" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;"></div>
+
+
+<!-- ─── BLOCO 2: Modal da câmera (cole antes do </body>) ─────────────────── -->
+<div id="camera-modal" role="dialog" aria-modal="true" aria-label="Câmera">
+
+  <!-- Vídeo da câmera -->
+  <video
+    id="camera-video"
+    autoplay
+    playsinline
+    muted
+    style="width:100%; max-width:480px; border-radius:12px; background:#000;"
+  ></video>
+
+  <!-- Canvas oculto para captura -->
+  <canvas id="camera-canvas" style="display:none;"></canvas>
+
+  <!-- Controles -->
+  <div class="camera-controls" style="
+    display:flex; gap:16px; margin-top:20px;
+    align-items:center; flex-wrap:wrap; justify-content:center;
+  ">
+
+    <!-- Cancelar -->
+    <button id="btn-cancel-camera" class="btn-cancel"
+            style="
+              background:transparent; border:2px solid rgba(255,255,255,0.6);
+              color:#fff; border-radius:8px; padding:10px 20px;
+              cursor:pointer; font-size:14px; min-height:44px;
+            ">
+      Cancelar
+    </button>
+
+    <!-- Capturar (botão central grande) -->
+    <button id="btn-capture" class="btn-capture"
+            aria-label="Tirar foto"
+            style="
+              width:72px; height:72px; border-radius:50%;
+              background:#fff; border:5px solid rgba(255,255,255,0.35);
+              cursor:pointer; transition:transform 0.1s; flex-shrink:0;
+            ">
+    </button>
+
+    <!-- Virar câmera -->
+    <button id="btn-flip-camera"
+            aria-label="Virar câmera"
+            style="
+              background:transparent; border:2px solid rgba(255,255,255,0.6);
+              color:#fff; border-radius:8px; padding:10px 16px;
+              cursor:pointer; font-size:20px; min-height:44px;
+            ">
+      🔄
+    </button>
+  </div>
+
+  <!-- Botão confirmar (aparece após capturar pelo menos 1 foto) -->
+  <button id="btn-confirm-camera"
+          style="
+            margin-top:16px;
+            background:#1a56db; color:#fff;
+            border:none; border-radius:8px;
+            padding:12px 32px; font-size:15px;
+            font-weight:600; cursor:pointer;
+            min-height:44px;
+          ">
+    ✓ Usar fotos capturadas
+  </button>
+
+  <!-- Instrução -->
+  <p style="color:rgba(255,255,255,0.6); font-size:13px; margin-top:12px; text-align:center;">
+    Toque no círculo branco para fotografar • Toque fora para fechar
+  </p>
+
+</div>
+
+
+<!-- ─── BLOCO 3: Scripts (cole antes do </body>, nesta ordem) ────────────── -->
+<!--
+<link rel="stylesheet" href="/mobile.css">
+<script src="/camera.js"></script>
+-->
+
+
+<!-- ─── BLOCO 4: Overlay da sidebar (cole após a tag <body>) ─────────────── -->
+<!--
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+-->
+
+
+<!-- ─── BLOCO 5: Escutar arquivos da câmera no seu código ────────────────── -->
+<!--
+  camera.js dispara o evento 'camera:files' quando o usuário confirma as fotos.
+  Cole este listener no seu script existente:
+
+  document.addEventListener('camera:files', function(e) {
+    const photos = e.detail.files; // Array de File objects (JPEG)
+    
+    // Exemplo: adicionar à sua lista de arquivos para envio
+    photos.forEach(file => {
+      myUploadQueue.push(file);
+      renderFilePreview(file);
+    });
+    
+    updateUploadButton();
+  });
+
+  OU defina a função global (camera.js chama automaticamente se existir):
+  
+  window.onCameraFiles = function(files) {
+    files.forEach(f => myUploadQueue.push(f));
+    updateUploadButton();
+  };
+-->
+
+
+<!-- ─── BLOCO 6: Atributo de plano no <body> ou elemento do usuário ──────── -->
+<!--
+  camera.js lê o limite de arquivos do plano do usuário.
+  Adicione data-plan ao elemento que representa o plano, ex:
+
+  <div data-plan="plus">...</div>    <!-- 6 arquivos -->
+  <div data-plan="basic">...</div>   <!-- 2 arquivos (padrão) -->
+
+  OU defina a variável global:
+  <script>window.userPlan = 'plus';</script>
+-->
