@@ -127,88 +127,128 @@
       });
     }
 
+    window.APP.ultimoConteudo = [];
+
     window.enviar = async () => {
       const txt = document.getElementById('chat-input').value.trim();
       const arqs = [...window.APP.arquivos];
+      const modoEl = document.getElementById('modo-select');
+      const modo = modoEl ? modoEl.value : 'detalhado';
       if (!txt && !arqs.length) return;
       document.getElementById('chat-input').value = '';
       window.APP.arquivos = []; renderArquivos();
 
       const preview = arqs.length ? ` [${arqs.length} arquivo(s)]` : '';
-      addMsg('user', txt || 'Analisar documentos anexados' + preview);
+      const modoLabel = modo === 'rapido' ? ' · Modo Rápido' : ' · Modo Detalhado';
+      addMsg('user', (txt || 'Analisar documentos anexados') + preview + modoLabel);
 
-      setTyping(true);
+      iniciarProgresso(arqs.length);
       try {
         let content = [];
-        for (const f of arqs) {
-          const {b64: data, type} = await b64(f);
+        for (let i = 0; i < arqs.length; i++) {
+          atualizarProgresso(i + 1, arqs.length, 'Lendo: ' + arqs[i].name);
+          const {b64: data, type} = await b64(arqs[i]);
           if (type==='application/pdf') content.push({type:'document',source:{type:'base64',media_type:'application/pdf',data}});
           else content.push({type:'image',source:{type:'base64',media_type:type.includes('png')?'image/png':'image/jpeg',data}});
         }
-        content.push({type:'text',text: txt || 'Analise os documentos anexados.'});
-        window.APP.conversa.push({role:'user',content});
 
-        const resp = await fetch('/api/chat',{
-          method:'POST',
-          headers:{'Content-Type':'application/json',},
+        const instrucaoModo = modo === 'rapido'
+          ? (txt||'') + '
+
+MODO RÁPIDO: Responda em formato resumido com no máximo 8 linhas usando este formato exato:
+✅ STATUS: [OK / ATENÇÃO / CRÍTICO]
+📄 DOCUMENTO: [tipo e número]
+💰 ECONOMIA: R$ [valor ou "Não identificada"]
+⚠️ RISCO: [descrição em 1 linha ou "Nenhum"]
+📌 AÇÃO: [1 frase de recomendação]
+
+Seja direto. Sem detalhes técnicos extensos.'
+          : (txt || 'Analise os documentos com análise fiscal completa e detalhada.');
+
+        content.push({type:'text', text: instrucaoModo});
+        window.APP.conversa.push({role:'user', content});
+
+        atualizarProgresso(arqs.length + 1, arqs.length + 1, 'Analisando com IA...');
+
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
-            model:'claude-sonnet-4-6', max_tokens:4096,
-            system:`Você é o Assistente Especializado da Contábil Inteligente, plataforma de análise fiscal e agronômica para empresas de Mato Grosso (até 350km de Cuiabá).
-
-PERFIS ATENDIDOS: Empresas (todos os setores), Produtores Rurais, Pecuaristas, Famílias Rurais, Agrônomos.
-
-PROTOCOLO DE ANÁLISE:
-1. IDENTIFICAR tipo de documento e setor
-2. EXTRAIR todos os dados relevantes
-3. ANALISAR com base em legislação e mercado de MT
-4. Para múltiplos documentos: analisar individualmente e consolidar
-
-FORMATO DE RESPOSTA:
-━━━━━━━━━━━━━━━━━━━━━━
-✅ ANÁLISE CONCLUÍDA
-━━━━━━━━━━━━━━━━━━━━━━
-
-[Para cada documento:]
-▸ Documento: [tipo e número]
-▸ Dados extraídos: [tabela com campos]
-▸ Situação fiscal: [normal/atenção/crítico]
-▸ Oportunidade identificada: [valor estimado]
-
-━━━━━━━━━━━━━━━━━━━━━━
-💰 RESUMO FINANCEIRO
-▸ Economia total identificada: R$ X.XXX,XX
-▸ Riscos fiscais: [quantidade e natureza]
-
-⚖️ RISCOS E ALERTAS
-[Lista de riscos com nível: BAIXO / MÉDIO / ALTO]
-
-📌 RECOMENDAÇÕES
-[Ações práticas numeradas]
-━━━━━━━━━━━━━━━━━━━━━━
-
-FONTES: RICMS-MT, legislação federal, Embrapa, IMEA, MAPA, SENAR. Sempre cite a fonte.
-TOM: Técnico, objetivo, corporativo. Português formal mas acessível.`,
+            system: `Você é o Assistente Especializado da Contábil Inteligente, plataforma de análise fiscal e agronômica para empresas de Mato Grosso (até 350km de Cuiabá). PERFIS: Empresas, Produtores Rurais, Pecuaristas, Famílias Rurais, Agrônomos. FONTES: RICMS-MT, Embrapa, IMEA, MAPA, SENAR. TOM: Técnico, objetivo, corporativo.`,
             messages: window.APP.conversa
           })
         });
         const data = await resp.json();
         if (data.error) throw new Error(data.error.message);
         const resposta = data.content[0].text;
-        window.APP.conversa.push({role:'assistant',content:resposta});
-        setTyping(false);
-        addMsg('assistant', resposta);
+        window.APP.conversa.push({role:'assistant', content: resposta});
+        finalizarProgresso();
+        addMsg('assistant', resposta, modo === 'rapido');
         await salvar(txt||'Análise de documentos', resposta, arqs.length);
         await carregarHistorico();
         atualizarDashboard();
       } catch(e) {
-        setTyping(false);
+        finalizarProgresso();
         addMsg('assistant', `⚠️ Erro ao processar: ${e.message}`);
       }
     };
 
+    window.expandirAnalise = async () => {
+      const btn = document.getElementById('btn-expandir');
+      if (btn) { btn.disabled = true; btn.textContent = 'Gerando análise completa...'; }
+      const wrap = document.getElementById('expandir-wrap');
+      iniciarProgresso(1);
+      atualizarProgresso(1, 1, 'Gerando análise detalhada...');
+      window.APP.conversa.push({role:'user', content: 'Agora forneça a análise COMPLETA e DETALHADA dos mesmos documentos. Inclua todos os dados, análise tributária, comparação com mercado de MT, riscos e recomendações práticas numeradas.'});
+      try {
+        const resp = await fetch('/api/chat', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ system: 'Você é o Assistente da Contábil Inteligente. Forneça análise fiscal completa.', messages: window.APP.conversa })
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error.message);
+        const resposta = data.content[0].text;
+        window.APP.conversa.push({role:'assistant', content: resposta});
+        finalizarProgresso();
+        if (wrap) wrap.remove();
+        addMsg('assistant', resposta, false);
+      } catch(e) {
+        finalizarProgresso();
+        addMsg('assistant', `⚠️ Erro: ${e.message}`);
+      }
+    };
+
+    function iniciarProgresso(total) {
+      let el = document.getElementById('progresso-wrap');
+      if (el) el.remove();
+      el = document.createElement('div');
+      el.id = 'progresso-wrap'; el.className = 'progresso-wrap';
+      el.innerHTML = `<div class="prog-info"><span id="prog-texto">Preparando...</span><span id="prog-count"></span></div><div class="prog-bg"><div class="prog-bar" id="prog-bar"></div></div>`;
+      document.getElementById('chat-msgs').appendChild(el);
+      document.getElementById('chat-msgs').scrollTop = 99999;
+    }
+
+    function atualizarProgresso(atual, total, nome) {
+      const pct = Math.min(Math.round((atual / (total + 1)) * 95) + 5, 95);
+      const bar = document.getElementById('prog-bar');
+      const txt = document.getElementById('prog-texto');
+      const count = document.getElementById('prog-count');
+      if (bar) bar.style.width = pct + '%';
+      if (txt) txt.textContent = nome || 'Processando...';
+      if (count && total > 1) count.textContent = `${atual}/${total}`;
+    }
+
+    function finalizarProgresso() {
+      const el = document.getElementById('progresso-wrap');
+      if (!el) return;
+      const bar = document.getElementById('prog-bar');
+      if (bar) bar.style.width = '100%';
+      setTimeout(() => { if (el.parentNode) el.remove(); }, 500);
+    }
+
     window.enterChat = (e) => { if (e.key==='Enter'&&!e.shiftKey){e.preventDefault();window.enviar();} };
 
-    function addMsg(tipo, txt) {
+    function addMsg(tipo, txt, mostrarExpandir) {
       const chat = document.getElementById('chat-msgs');
       const d = document.createElement('div');
       d.className = `msg msg-${tipo}`;
@@ -219,6 +259,13 @@ TOM: Técnico, objetivo, corporativo. Português formal mas acessível.`,
         ? `<div class="msg-avatar">CI</div><div class="msg-bubble">${conteudo}</div>`
         : `<div class="msg-bubble">${conteudo}</div>`;
       chat.appendChild(d);
+      if (mostrarExpandir && tipo==="assistant") {
+        const expandBtn = document.createElement("div");
+        expandBtn.id = "expandir-wrap"; expandBtn.className = "expandir-wrap";
+        expandBtn.innerHTML = `<button id="btn-expandir" class="btn-expandir" onclick="expandirAnalise()">Ver análise completa →</button>`;
+        chat.appendChild(expandBtn);
+      }
+      chat.scrollTop = chat.scrollHeight;
       chat.scrollTop = chat.scrollHeight;
     }
 
@@ -735,6 +782,23 @@ TOM: Técnico, objetivo, corporativo. Português formal mas acessível.`,
     .rel-item-info { font-size: 0.75rem; color: var(--teal); font-weight: 500; }
 
     /* ANIMATIONS */
+
+    /* PROGRESSO */
+    .progresso-wrap { margin: 8px 0; padding: 12px 16px; background: var(--white); border: 1px solid var(--rule); border-radius: 6px; }
+    .prog-info { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.78rem; color: var(--ink-3); font-family: 'IBM Plex Mono', monospace; }
+    .prog-bg { background: var(--bg-2); border-radius: 4px; height: 4px; overflow: hidden; }
+    .prog-bar { height: 100%; background: var(--ink); border-radius: 4px; width: 5%; transition: width 0.4s ease; }
+
+    /* MODO SELECT */
+    .modo-select { border: 1px solid var(--rule); border-radius: 4px; padding: 8px 12px; font-size: 0.82rem; font-family: 'IBM Plex Sans', sans-serif; color: var(--ink); background: var(--bg); outline: none; cursor: pointer; }
+    .modo-select:focus { border-color: var(--ink); }
+
+    /* EXPANDIR */
+    .expandir-wrap { padding: 8px 0 4px 44px; }
+    .btn-expandir { background: none; border: 1px solid var(--rule); border-radius: 4px; padding: 7px 16px; font-size: 0.78rem; color: var(--blue); font-family: 'IBM Plex Sans', sans-serif; cursor: pointer; transition: all 0.15s; }
+    .btn-expandir:hover { background: var(--blue-l); border-color: var(--blue); }
+    .btn-expandir:disabled { opacity: 0.5; cursor: not-allowed; }
+
     @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
     @keyframes bounce { 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }
@@ -875,6 +939,10 @@ TOM: Técnico, objetivo, corporativo. Português formal mas acessível.`,
         <input type="file" id="file-input" accept="image/*,.pdf" multiple onchange="onArquivos(this)" />
 
         <div class="chat-input-row">
+          <select class="modo-select" id="modo-select" title="Modo de análise">
+            <option value="rapido">⚡ Modo Rápido</option>
+            <option value="detalhado" selected>📋 Modo Detalhado</option>
+          </select>
           <textarea class="chat-input" id="chat-input" placeholder="Descreva o documento ou adicione instruções complementares..." rows="2" onkeypress="enterChat(event)"></textarea>
           <button class="btn-enviar" onclick="enviar()">Enviar →</button>
         </div>
