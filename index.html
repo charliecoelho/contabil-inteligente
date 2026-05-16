@@ -938,7 +938,13 @@ Seja direto. Sem detalhes técnicos extensos.'
         <div id="chips-wrap"></div>
         <div class="notif" id="notif"></div>
 
-        <input type="file" id="file-input" accept="image/*,.pdf" multiple onchange="onArquivos(this)" />
+        <input type="file" id="file-input" accept="image/*,.pdf" multiple onchange="onArquivos(this)" /><!-- Botão câmera mobile -->
+<button id="btn-open-camera" class="btn-camera mobile-camera-only" style="display:none;" aria-label="Tirar foto com a câmera">
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+  Tirar Foto
+</button>
+<span id="camera-photo-count" style="font-size:13px;color:#6b7280;"></span>
+<div id="camera-preview-bar" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;"></div>
 
         <div class="chat-input-row">
           <select class="modo-select" id="modo-select" title="Modo de análise">
@@ -965,5 +971,18 @@ Seja direto. Sem detalhes técnicos extensos.'
   </div>
 </div>
 
-</body>
+<!-- Modal câmera -->
+<div id="camera-modal" role="dialog" aria-modal="true" aria-label="Câmera">
+  <video id="camera-video" autoplay playsinline muted style="width:100%;max-width:480px;border-radius:12px;background:#000;"></video>
+  <canvas id="camera-canvas" style="display:none;"></canvas>
+  <div class="camera-controls" style="display:flex;gap:16px;margin-top:20px;align-items:center;flex-wrap:wrap;justify-content:center;">
+    <button id="btn-cancel-camera" class="btn-cancel" style="background:transparent;border:2px solid rgba(255,255,255,0.6);color:#fff;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:14px;min-height:44px;">Cancelar</button>
+    <button id="btn-capture" class="btn-capture" aria-label="Tirar foto" style="width:72px;height:72px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,0.35);cursor:pointer;flex-shrink:0;"></button>
+    <button id="btn-flip-camera" aria-label="Virar câmera" style="background:transparent;border:2px solid rgba(255,255,255,0.6);color:#fff;border-radius:8px;padding:10px 16px;cursor:pointer;font-size:20px;min-height:44px;">🔄</button>
+  </div>
+  <button id="btn-confirm-camera" style="margin-top:16px;background:#1a56db;color:#fff;border:none;border-radius:8px;padding:12px 32px;font-size:15px;font-weight:600;cursor:pointer;min-height:44px;">✓ Usar fotos capturadas</button>
+  <p style="color:rgba(255,255,255,0.6);font-size:13px;margin-top:12px;text-align:center;">Toque no círculo branco para fotografar • Toque fora para fechar</p>
+</div>
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+<script src="/camera.js"></script></body>
 </html>
