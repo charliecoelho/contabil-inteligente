@@ -378,6 +378,36 @@
         </div>`;
     };
   
+
+    window.abrirMenu = () => {
+      document.getElementById('menu-lateral').classList.add('aberto');
+      document.getElementById('menu-overlay').classList.add('aberto');
+      document.body.style.overflow = 'hidden';
+      // Sync user info
+      const plano = document.getElementById('hd-plano').textContent;
+      const email = document.getElementById('hd-email').textContent;
+      const menuPlano = document.getElementById('menu-plano-tag');
+      const menuEmail = document.getElementById('menu-email-tag');
+      if (menuPlano) menuPlano.textContent = plano;
+      if (menuEmail) menuEmail.textContent = email;
+    };
+
+    window.fecharMenu = () => {
+      document.getElementById('menu-lateral').classList.remove('aberto');
+      document.getElementById('menu-overlay').classList.remove('aberto');
+      document.body.style.overflow = '';
+    };
+
+    window.navegarMenu = (aba) => {
+      // Update menu items
+      document.querySelectorAll('.menu-item').forEach(b => b.classList.remove('ativo'));
+      const mi = document.getElementById('mi-' + aba);
+      if (mi) mi.classList.add('ativo');
+      // Navigate
+      window.trocarAba(aba, document.querySelectorAll('.nav-btn')[['dashboard','chat','relatorio'].indexOf(aba)]);
+      fecharMenu();
+    };
+
     window.atualizarBottomNav = (aba) => {
       document.querySelectorAll('.bottom-nav-btn').forEach(b => b.classList.remove('ativo'));
       const btn = document.getElementById('bn-' + aba);
@@ -817,6 +847,63 @@
     .btn-expandir:disabled { opacity: 0.5; cursor: not-allowed; }
 
 
+
+    /* MENU LATERAL MOBILE */
+    .menu-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(15,25,35,0.5); z-index: 200;
+      backdrop-filter: blur(2px);
+    }
+    .menu-overlay.aberto { display: block; }
+
+    .menu-lateral {
+      position: fixed; top: 0; left: -280px; bottom: 0;
+      width: 260px; background: var(--white);
+      z-index: 201; transition: left 0.28s ease;
+      display: flex; flex-direction: column;
+      box-shadow: 4px 0 24px rgba(0,0,0,0.15);
+    }
+    .menu-lateral.aberto { left: 0; }
+
+    .menu-header {
+      background: var(--ink); padding: 20px 20px 16px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .menu-header-icon {
+      width: 32px; height: 32px; background: var(--gold);
+      border-radius: 6px; display: flex; align-items: center;
+      justify-content: center; font-size: 16px;
+    }
+    .menu-header-text { font-family: 'Playfair Display', serif; font-size: 1rem; color: #fff; }
+    .menu-header-sub { font-size: 0.68rem; color: rgba(255,255,255,0.4); margin-top: 2px; font-family: 'IBM Plex Mono', monospace; }
+
+    .menu-body { flex: 1; padding: 16px 12px; display: flex; flex-direction: column; gap: 2px; }
+    .menu-label { font-size: 0.65rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); padding: 8px 12px 6px; }
+
+    .menu-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 13px 14px; border-radius: 6px;
+      font-size: 0.9rem; color: var(--ink-2);
+      cursor: pointer; transition: all 0.15s;
+      font-weight: 400; border: none; background: none;
+      width: 100%; text-align: left;
+      font-family: 'IBM Plex Sans', sans-serif;
+    }
+    .menu-item:hover { background: var(--bg); color: var(--ink); }
+    .menu-item.ativo { background: var(--ink); color: var(--white); font-weight: 500; }
+    .menu-item .icon { font-size: 18px; }
+
+    .menu-footer { padding: 16px 20px; border-top: 1px solid var(--rule); }
+    .menu-email { font-size: 0.72rem; color: var(--ink-3); font-family: 'IBM Plex Mono', monospace; margin-bottom: 10px; }
+    .menu-plano { font-size: 0.7rem; font-weight: 600; color: var(--teal); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+    .menu-sair { width: 100%; background: var(--bg); border: 1px solid var(--rule); color: var(--ink-2); font-family: 'IBM Plex Sans', sans-serif; font-size: 0.85rem; padding: 10px; border-radius: 6px; cursor: pointer; }
+
+    /* Hamburguer icon */
+    .btn-menu { display: none; background: none; border: none; cursor: pointer; padding: 4px; }
+    @media (max-width: 720px) { .btn-menu { display: flex; align-items: center; } }
+    .hamburger { width: 22px; height: 16px; display: flex; flex-direction: column; justify-content: space-between; }
+    .hamburger span { display: block; height: 2px; background: #fff; border-radius: 2px; transition: all 0.2s; }
+
     /* BOTTOM NAV MOBILE */
     .bottom-nav {
       display: none;
@@ -851,33 +938,56 @@
     #tela-login, .login-card { animation: fadeUp 0.5s ease both; }
 
     @media (max-width: 720px) {
+      /* LOGIN */
       .login-left { display: none; }
       .login-right { padding: 32px 20px; }
+
+      /* SIDEBAR */
       .sidebar { display: none; }
+
+      /* TOPBAR */
       .topbar { padding: 0 12px; height: auto; min-height: 52px; flex-wrap: nowrap; }
       .tb-divider { display: none; }
       .topbar > span { display: none; }
       .tb-info { display: none; }
       .tb-right { gap: 8px; margin-left: auto; flex-shrink: 0; }
-      .tb-marca { font-size: 0.85rem; gap: 8px; }
+      .tb-marca { font-size: 0.85rem; gap: 8px; cursor: pointer; }
       .tb-marca .tb-icon { width: 24px; height: 24px; font-size: 12px; flex-shrink: 0; }
       .btn-sair { padding: 5px 10px; font-size: 0.75rem; white-space: nowrap; }
+
+      /* CHAT BAR */
       .chat-bar { padding: 8px 12px; height: auto; }
       .chat-bar-title { font-size: 0.72rem; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .chat-msgs { padding: 12px; gap: 12px; }
+
+      /* MENSAGENS */
+      .chat-msgs { padding: 12px; gap: 12px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
       .msg-bubble { font-size: 0.85rem; padding: 12px 14px; max-width: 95%; }
+
+      /* DROP ZONE */
       .drop-zone { margin: 8px 12px 0; padding: 12px; }
       .dz-lim { font-family: 'IBM Plex Sans', sans-serif !important; font-size: 0.78rem; }
       .dz-text p { font-size: 0.82rem; }
+
+      /* CHIPS */
       #chips-wrap { padding: 6px 12px; }
       .chip { font-family: 'IBM Plex Sans', sans-serif; font-size: 0.78rem; }
+
+      /* INPUT AREA — sem cortar */
       .chat-input-row { padding: 8px 12px 16px; gap: 6px; flex-wrap: wrap; }
       .modo-select { width: 100%; font-size: 0.82rem; padding: 9px 12px; font-family: 'IBM Plex Sans', sans-serif; }
       .chat-input { font-size: 0.85rem; min-height: 44px; width: 100%; }
-      .btn-enviar { width: 100%; padding: 13px; font-size: 0.9rem; }
+      .btn-enviar { width: 100%; padding: 14px; font-size: 0.9rem; margin-bottom: 4px; }
+
+      /* EXPANDIR */
       .expandir-wrap { padding: 6px 0 4px 0; }
       .btn-expandir { width: 100%; text-align: center; padding: 10px; }
-      .dash-scroll { padding: 16px; }
+
+      /* APP BODY */
+      .app-body { padding-bottom: 0; overflow: hidden; }
+      .aba { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+      /* DASHBOARD */
+      .dash-scroll { padding: 16px; overflow-y: auto; }
       .dash-titulo { font-size: 1.2rem; }
       .kpis { grid-template-columns: repeat(2, 1fr); }
       .kpi { padding: 14px; }
@@ -885,7 +995,9 @@
       .kpi-lbl { font-size: 0.68rem; }
       .hist-row { flex-wrap: wrap; gap: 8px; padding: 10px 16px; }
       .dica { padding: 16px; }
-      .rel-scroll { padding: 12px; }
+
+      /* RELATÓRIO */
+      .rel-scroll { padding: 12px; overflow-y: auto; }
       .rel-capa { padding: 20px; }
       .rel-titulo { font-size: 1.2rem; }
       .rel-kpis { grid-template-columns: repeat(2, 1fr); }
@@ -893,7 +1005,13 @@
       .rel-sec { padding: 16px; }
       .rel-tabela { font-size: 0.72rem; }
       .rel-tabela th, .rel-tabela td { padding: 7px 6px; }
-      .notif { bottom: 80px; right: 12px; left: 12px; text-align: center; }
+
+      /* NOTIF */
+      .notif { bottom: 16px; right: 12px; left: 12px; text-align: center; }
+
+      /* BOTTOM NAV */
+      .bottom-nav { display: flex !important; }
+      .main { padding-bottom: 60px; }
     }
   </style>
 </head>
@@ -937,6 +1055,9 @@
 <!-- ── APP ── -->
 <div id="tela-app">
   <header class="topbar">
+    <button class="btn-menu" onclick="abrirMenu()" aria-label="Menu">
+      <div class="hamburger"><span></span><span></span><span></span></div>
+    </button>
     <div class="tb-marca">
       <div class="tb-icon">🧮</div>
       Contábil Inteligente
@@ -1045,6 +1166,36 @@
       </div>
 
     </main>
+  </div>
+
+
+  <!-- MENU LATERAL MOBILE -->
+  <div class="menu-overlay" id="menu-overlay" onclick="fecharMenu()"></div>
+  <div class="menu-lateral" id="menu-lateral">
+    <div class="menu-header">
+      <div class="menu-header-icon">🧮</div>
+      <div>
+        <div class="menu-header-text">Contábil Inteligente</div>
+        <div class="menu-header-sub">Plataforma de Análise Fiscal</div>
+      </div>
+    </div>
+    <div class="menu-body">
+      <div class="menu-label">Navegação</div>
+      <button class="menu-item ativo" id="mi-dashboard" onclick="navegarMenu('dashboard')">
+        <span class="icon">▦</span> Painel
+      </button>
+      <button class="menu-item" id="mi-chat" onclick="navegarMenu('chat')">
+        <span class="icon">◈</span> Analisar
+      </button>
+      <button class="menu-item" id="mi-relatorio" onclick="navegarMenu('relatorio')">
+        <span class="icon">◉</span> Relatório Mensal
+      </button>
+    </div>
+    <div class="menu-footer">
+      <div class="menu-plano" id="menu-plano-tag"></div>
+      <div class="menu-email" id="menu-email-tag"></div>
+      <button class="menu-sair" onclick="fazerLogout()">Sair da plataforma</button>
+    </div>
   </div>
 
   <!-- BOTTOM NAV MOBILE -->
