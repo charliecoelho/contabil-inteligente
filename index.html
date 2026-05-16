@@ -153,16 +153,7 @@
         }
 
         const instrucaoModo = modo === 'rapido'
-          ? (txt||'') + '
-
-MODO RÁPIDO: Responda em formato resumido com no máximo 8 linhas usando este formato exato:
-✅ STATUS: [OK / ATENÇÃO / CRÍTICO]
-📄 DOCUMENTO: [tipo e número]
-💰 ECONOMIA: R$ [valor ou "Não identificada"]
-⚠️ RISCO: [descrição em 1 linha ou "Nenhum"]
-📌 AÇÃO: [1 frase de recomendação]
-
-Seja direto. Sem detalhes técnicos extensos.'
+          ? ((txt||'') + '\n\nMODO RÁPIDO: Responda em no máximo 8 linhas:\n✅ STATUS: [OK/ATENÇÃO/CRÍTICO]\n📄 DOCUMENTO: [tipo e número]\n💰 ECONOMIA: R$ [valor ou Não identificada]\n⚠️ RISCO: [1 linha ou Nenhum]\n📌 AÇÃO: [1 frase]. Seja direto.')
           : (txt || 'Analise os documentos com análise fiscal completa e detalhada.');
 
         content.push({type:'text', text: instrucaoModo});
