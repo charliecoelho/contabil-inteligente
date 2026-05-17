@@ -959,19 +959,21 @@
       .notif { bottom: 16px; right: 12px; left: 12px; text-align: center; }
 
       /* SCROLL E ENVIAR */
-      html, body { overflow: hidden; height: 100%; }
-      #tela-app { height: 100vh; display: flex; flex-direction: column; }
-      .app-body { flex: 1; overflow: hidden; }
-      .main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
-      .aba.ativa { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-      .dash-scroll, .rel-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-      .aba-chat-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-      .chat-msgs { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; }
-      .chat-input-row { flex-shrink: 0; padding: 8px 12px 24px; }
-      .btn-enviar { width: 100%; padding: 14px; font-size: 0.9rem; }
+      html { height: -webkit-fill-available; }
+      body { overflow: hidden; min-height: -webkit-fill-available; }
+      #tela-app { height: 100dvh; display: flex; flex-direction: column; }
+      .app-body { flex: 1; overflow: hidden; min-height: 0; }
+      .main { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+      .aba.ativa { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+      .dash-scroll, .rel-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; }
+      #aba-chat { display: flex; flex-direction: column; overflow: hidden; }
+      .chat-msgs { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; padding-bottom: 8px; }
+      .chat-input-row { flex-shrink: 0; padding: 10px 12px 32px; background: var(--white); }
+      .btn-enviar { width: 100%; padding: 16px; font-size: 0.92rem; min-height: 52px; }
       .drop-zone { flex-shrink: 0; }
       #chips-wrap { flex-shrink: 0; }
       #aviso-plano { flex-shrink: 0; }
+      .chat-bar { flex-shrink: 0; }
     }
   </style>
 </head>
