@@ -408,31 +408,6 @@
       fecharMenu();
     };
 
-    window.atualizarBottomNav = (aba) => {
-      document.querySelectorAll('.bottom-nav-btn').forEach(b => b.classList.remove('ativo'));
-      const btn = document.getElementById('bn-' + aba);
-      if (btn) btn.classList.add('ativo');
-      // Sync sidebar too
-      const navBtns = document.querySelectorAll('.nav-btn');
-      navBtns.forEach(b => b.classList.remove('ativo'));
-      const sideBtn = Array.from(navBtns).find(b => b.getAttribute('onclick') && b.getAttribute('onclick').includes("'" + aba + "'"));
-      if (sideBtn) sideBtn.classList.add('ativo');
-    };
-
-    // Override trocarAba to also update bottom nav
-    const _trocarAbaOriginal = window.trocarAba;
-    window.trocarAba = (aba, btn) => {
-      document.querySelectorAll('.aba').forEach(a => a.classList.remove('ativa'));
-      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('ativo'));
-      document.getElementById('aba-' + aba).classList.add('ativa');
-      if (btn && btn.classList.contains('nav-btn')) btn.classList.add('ativo');
-      if (aba === 'relatorio') gerarRelatorio();
-      // Update bottom nav
-      document.querySelectorAll('.bottom-nav-btn').forEach(b => b.classList.remove('ativo'));
-      const bnBtn = document.getElementById('bn-' + aba);
-      if (bnBtn) bnBtn.classList.add('ativo');
-    };
-
   </script>
 
   <style>
@@ -904,32 +879,6 @@
     .hamburger { width: 22px; height: 16px; display: flex; flex-direction: column; justify-content: space-between; }
     .hamburger span { display: block; height: 2px; background: #fff; border-radius: 2px; transition: all 0.2s; }
 
-    /* BOTTOM NAV MOBILE */
-    .bottom-nav {
-      display: none;
-      position: fixed; bottom: 0; left: 0; right: 0;
-      background: var(--white); border-top: 1px solid var(--rule);
-      height: 60px; z-index: 50;
-      display: none; align-items: center; justify-content: space-around;
-    }
-
-    .bottom-nav-btn {
-      display: flex; flex-direction: column; align-items: center; gap: 3px;
-      font-size: 0.65rem; color: var(--ink-3); cursor: pointer;
-      background: none; border: none; padding: 8px 16px;
-      font-family: 'IBM Plex Sans', sans-serif; transition: color 0.15s;
-      min-width: 70px;
-    }
-
-    .bottom-nav-btn.ativo { color: var(--ink); }
-    .bottom-nav-btn .bn-icon { font-size: 20px; }
-
-    @media (max-width: 720px) {
-      .bottom-nav { display: flex; }
-      .app-body { padding-bottom: 60px; }
-      .chat-input-row { padding-bottom: 20px; }
-    }
-
     @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
     @keyframes bounce { 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }
@@ -1009,9 +958,20 @@
       /* NOTIF */
       .notif { bottom: 16px; right: 12px; left: 12px; text-align: center; }
 
-      /* BOTTOM NAV */
-      .bottom-nav { display: flex !important; }
-      .main { padding-bottom: 60px; }
+      /* SCROLL E ENVIAR */
+      html, body { overflow: hidden; height: 100%; }
+      #tela-app { height: 100vh; display: flex; flex-direction: column; }
+      .app-body { flex: 1; overflow: hidden; }
+      .main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+      .aba.ativa { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+      .dash-scroll, .rel-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+      .aba-chat-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+      .chat-msgs { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; }
+      .chat-input-row { flex-shrink: 0; padding: 8px 12px 24px; }
+      .btn-enviar { width: 100%; padding: 14px; font-size: 0.9rem; }
+      .drop-zone { flex-shrink: 0; }
+      #chips-wrap { flex-shrink: 0; }
+      #aviso-plano { flex-shrink: 0; }
     }
   </style>
 </head>
@@ -1198,21 +1158,7 @@
     </div>
   </div>
 
-  <!-- BOTTOM NAV MOBILE -->
-  <nav class="bottom-nav" id="bottom-nav">
-    <button class="bottom-nav-btn ativo" id="bn-dashboard" onclick="trocarAba('dashboard', this); atualizarBottomNav('dashboard')">
-      <span class="bn-icon">▦</span>
-      <span>Painel</span>
-    </button>
-    <button class="bottom-nav-btn" id="bn-chat" onclick="trocarAba('chat', this); atualizarBottomNav('chat')">
-      <span class="bn-icon">◈</span>
-      <span>Analisar</span>
-    </button>
-    <button class="bottom-nav-btn" id="bn-relatorio" onclick="trocarAba('relatorio', this); atualizarBottomNav('relatorio')">
-      <span class="bn-icon">◉</span>
-      <span>Relatório</span>
-    </button>
-  </nav>
+
 
 </div>
 
