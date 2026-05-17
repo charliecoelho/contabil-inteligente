@@ -383,6 +383,7 @@ TOM: Técnico mas acessível. Direto ao ponto. Educativo sem juridiquês.`,
             ${a.numArqs>0?`<span class="badge badge-blue">${a.numArqs} arq.</span>`:''}
             ${a.economia>0?`<span class="badge badge-green">R$ ${a.economia.toLocaleString('pt-BR')}</span>`:''}
             ${a.temRisco?`<span class="badge badge-red">Risco</span>`:''}
+          <button class="btn-pdf" style="margin-left:auto;font-size:0.72rem" onclick="gerarPDFHistorico('${a.id}')" title="Baixar em PDF">⬇ PDF</button>
           </div>
         </div>`).join('') || '<p class="empty">Nenhuma análise registrada.</p>';
     }
@@ -437,6 +438,146 @@ TOM: Técnico mas acessível. Direto ao ponto. Educativo sem juridiquês.`,
         </div>`;
     };
   
+
+
+    // ── PDF GENERATION ──
+    window._pdfTipo = 'chat';
+    window._pdfHistoricoId = null;
+
+    window.abrirModalPDF = (tipo, histId) => {
+      window._pdfTipo = tipo;
+      window._pdfHistoricoId = histId || null;
+      document.getElementById('modal-pdf').classList.add('aberto');
+    };
+
+    window.fecharModalPDF = () => {
+      document.getElementById('modal-pdf').classList.remove('aberto');
+    };
+
+    window.confirmarPDF = () => {
+      fecharModalPDF();
+      if (window._pdfTipo === 'chat') gerarPDFChat();
+      else if (window._pdfTipo === 'historico') gerarPDFHistoricoCompleto(window._pdfHistoricoId);
+    };
+
+    window.gerarPDFChat = () => {
+      const msgs = document.getElementById('chat-msgs');
+      if (!msgs) return;
+      const empresa = document.getElementById('hd-nome')?.textContent || 'Cliente';
+      const plano = document.getElementById('hd-plano')?.textContent || '';
+      const data = new Date().toLocaleDateString('pt-BR');
+      const hora = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+
+      let html = `
+        <html><head><meta charset="UTF-8">
+        <style>
+          body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 32px; color: #1C2B40; }
+          .header { border-bottom: 3px solid #0F1923; padding-bottom: 20px; margin-bottom: 28px; }
+          .marca { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: #8A97B0; margin-bottom: 6px; }
+          .titulo { font-size: 22px; font-weight: bold; color: #0F1923; margin-bottom: 4px; }
+          .sub { font-size: 13px; color: #5C6B7A; }
+          .aviso { background: #FBF5DC; border: 1px solid #E8D066; border-radius: 6px; padding: 12px 16px; font-size: 12px; color: #92710A; margin-bottom: 24px; }
+          .msg { margin-bottom: 20px; }
+          .msg-user { text-align: right; }
+          .bubble { display: inline-block; padding: 12px 16px; border-radius: 8px; font-size: 13px; line-height: 1.6; max-width: 85%; }
+          .bubble-user { background: #0F1923; color: #fff; }
+          .bubble-ci { background: #F7F8FA; border: 1px solid #DDE3EA; color: #1C2B40; }
+          .label { font-size: 10px; color: #8A97B0; margin-bottom: 4px; letter-spacing: 0.08em; text-transform: uppercase; }
+          .footer { margin-top: 40px; border-top: 1px solid #DDE3EA; padding-top: 16px; font-size: 11px; color: #8A97B0; }
+          hr { border: none; border-top: 1px solid #DDE3EA; margin: 8px 0; }
+        </style></head><body>
+        <div class="header">
+          <div class="marca">Contábil Inteligente · Plataforma de Análise Fiscal</div>
+          <div class="titulo">Histórico de Conversa</div>
+          <div class="sub">${empresa} · ${plano} · ${data} às ${hora}</div>
+        </div>
+        <div class="aviso">⚠️ Esta conversa não está salva no sistema. Este PDF é o único registro desta sessão.</div>
+      `;
+
+      const mensagens = msgs.querySelectorAll('.msg');
+      mensagens.forEach(msg => {
+        const isUser = msg.classList.contains('msg-user');
+        const bubble = msg.querySelector('.msg-bubble');
+        if (!bubble) return;
+        const texto = bubble.innerText || bubble.textContent;
+        if (!texto.trim()) return;
+        html += `<div class="msg ${isUser ? 'msg-user' : ''}">
+          <div class="label">${isUser ? empresa : 'CI · Copiloto Empresarial'}</div>
+          <div class="bubble ${isUser ? 'bubble-user' : 'bubble-ci'}">${texto.replace(/\n/g,'<br>')}</div>
+        </div>`;
+      });
+
+      html += `<div class="footer">Contábil Inteligente · contabilinteligente.api.br · Gerado em ${data} às ${hora}</div></body></html>`;
+
+      const blob = new Blob([html], {type: 'text/html'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `conversa-contabil-${data.replace(/\//g,'-')}.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    window.gerarPDFHistorico = (id, titulo) => {
+      window._pdfTipo = 'historico';
+      window._pdfHistoricoId = id;
+      document.getElementById('modal-pdf').classList.add('aberto');
+    };
+
+    window.gerarPDFHistoricoCompleto = (id) => {
+      const analise = window.APP.historico.find(a => a.id === id);
+      if (!analise) { alert('Análise não encontrada.'); return; }
+      const empresa = window.APP.empresa.nomeEmpresa || 'Cliente';
+      const data = new Date(analise.data).toLocaleDateString('pt-BR');
+      const hora = new Date(analise.data).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+
+      const html = `
+        <html><head><meta charset="UTF-8">
+        <style>
+          body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 32px; color: #1C2B40; }
+          .header { border-bottom: 3px solid #0F1923; padding-bottom: 20px; margin-bottom: 28px; }
+          .marca { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: #8A97B0; margin-bottom: 6px; }
+          .titulo { font-size: 22px; font-weight: bold; color: #0F1923; margin-bottom: 4px; }
+          .sub { font-size: 13px; color: #5C6B7A; }
+          .aviso { background: #FBF5DC; border: 1px solid #E8D066; border-radius: 6px; padding: 12px 16px; font-size: 12px; color: #92710A; margin-bottom: 24px; }
+          .secao { margin-bottom: 28px; }
+          .secao-titulo { font-size: 10px; font-weight: bold; letter-spacing: 0.12em; text-transform: uppercase; color: #8A97B0; margin-bottom: 10px; border-bottom: 1px solid #DDE3EA; padding-bottom: 6px; }
+          .conteudo { font-size: 13px; line-height: 1.7; color: #2C3A4A; background: #F7F8FA; padding: 16px; border-radius: 6px; white-space: pre-wrap; }
+          .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+          .badge { font-size: 11px; font-weight: bold; padding: 4px 10px; border-radius: 4px; }
+          .badge-green { background: #DCFCE7; color: #15803D; }
+          .badge-red { background: #FEE2E2; color: #B91C1C; }
+          .footer { margin-top: 40px; border-top: 1px solid #DDE3EA; padding-top: 16px; font-size: 11px; color: #8A97B0; }
+        </style></head><body>
+        <div class="header">
+          <div class="marca">Contábil Inteligente · Relatório de Análise</div>
+          <div class="titulo">Análise Fiscal</div>
+          <div class="sub">${empresa} · ${data} às ${hora}</div>
+        </div>
+        <div class="aviso">⚠️ Esta análise não está salva no sistema. Este PDF é o único registro desta sessão.</div>
+        <div class="secao">
+          <div class="secao-titulo">Documento / Pergunta enviada</div>
+          <div class="conteudo">${analise.pergunta || 'Análise de documento'}</div>
+        </div>
+        <div class="secao">
+          <div class="secao-titulo">Análise da IA</div>
+          <div class="conteudo">${analise.resposta || 'Sem resposta salva'}</div>
+          <div class="badges">
+            ${analise.economia>0?`<span class="badge badge-green">💰 R$ ${analise.economia.toLocaleString('pt-BR')} de economia identificada</span>`:''}
+            ${analise.temRisco?`<span class="badge badge-red">⚠️ Risco fiscal identificado</span>`:''}
+          </div>
+        </div>
+        <div class="footer">Contábil Inteligente · contabilinteligente.api.br · Gerado em ${new Date().toLocaleDateString('pt-BR')}</div>
+        </body></html>`;
+
+      const blob = new Blob([html], {type: 'text/html'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `analise-${data.replace(/\//g,'-')}.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
 
     window.abrirMenu = () => {
       document.getElementById('menu-lateral').classList.add('aberto');
@@ -938,6 +1079,51 @@ TOM: Técnico mas acessível. Direto ao ponto. Educativo sem juridiquês.`,
     .hamburger { width: 22px; height: 16px; display: flex; flex-direction: column; justify-content: space-between; }
     .hamburger span { display: block; height: 2px; background: #fff; border-radius: 2px; transition: all 0.2s; }
 
+
+    /* PDF BUTTON */
+    .btn-pdf {
+      display: flex; align-items: center; gap: 6px;
+      background: none; border: 1px solid var(--rule);
+      border-radius: 4px; padding: 6px 14px;
+      font-size: 0.78rem; color: var(--ink-3);
+      font-family: 'IBM Plex Sans', sans-serif;
+      cursor: pointer; transition: all 0.15s;
+      margin-left: auto;
+    }
+    .btn-pdf:hover { border-color: var(--ink); color: var(--ink); background: var(--bg); }
+
+    .pdf-aviso {
+      background: var(--gold-l); border: 1px solid #E8D066;
+      border-radius: 6px; padding: 12px 16px;
+      font-size: 0.8rem; color: var(--gold);
+      margin: 8px 20px; display: none;
+    }
+
+    /* MODAL PDF */
+    .modal-pdf {
+      display: none; position: fixed; inset: 0;
+      background: rgba(15,25,35,0.6); z-index: 300;
+      align-items: center; justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .modal-pdf.aberto { display: flex; }
+    .modal-pdf-box {
+      background: var(--white); border-radius: 8px;
+      padding: 32px; width: 100%; max-width: 480px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.2);
+    }
+    .modal-pdf-titulo {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.2rem; color: var(--ink); margin-bottom: 8px;
+    }
+    .modal-pdf-aviso {
+      background: var(--gold-l); border: 1px solid #E8D066;
+      border-radius: 6px; padding: 12px 16px;
+      font-size: 0.82rem; color: #92710A; margin: 16px 0;
+      line-height: 1.5;
+    }
+    .modal-pdf-acoes { display: flex; gap: 10px; margin-top: 20px; }
+
     @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
     @keyframes bounce { 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }
@@ -1148,6 +1334,9 @@ TOM: Técnico mas acessível. Direto ao ponto. Educativo sem juridiquês.`,
           <div class="chat-dots"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span></div>
           <span class="chat-bar-title">ci.assistant · análise fiscal e agronômica</span>
           <div class="chat-status">Sistema operacional</div>
+          <button class="btn-pdf" onclick="abrirModalPDF('chat')" title="Baixar conversa em PDF">
+            ⬇ PDF
+          </button>
         </div>
 
         <div class="chat-msgs" id="chat-msgs">
@@ -1209,6 +1398,22 @@ TOM: Técnico mas acessível. Direto ao ponto. Educativo sem juridiquês.`,
     </main>
   </div>
 
+
+
+  <!-- MODAL PDF -->
+  <div class="modal-pdf" id="modal-pdf">
+    <div class="modal-pdf-box">
+      <div class="modal-pdf-titulo">📄 Baixar Conversa em PDF</div>
+      <p style="font-size:0.85rem;color:var(--ink-3);line-height:1.6">O PDF será gerado com toda a conversa atual, incluindo perguntas e respostas da IA.</p>
+      <div class="modal-pdf-aviso">
+        ⚠️ <strong>Atenção:</strong> Esta conversa <strong>não ficará salva no sistema</strong> após o download. Guarde o PDF em local seguro — ele será seu único registro desta sessão.
+      </div>
+      <div class="modal-pdf-acoes">
+        <button class="btn-sec" style="flex:1" onclick="fecharModalPDF()">Cancelar</button>
+        <button class="btn-primary" style="flex:1" id="btn-confirmar-pdf" onclick="confirmarPDF()">⬇ Baixar PDF</button>
+      </div>
+    </div>
+  </div>
 
   <!-- MENU LATERAL MOBILE -->
   <div class="menu-overlay" id="menu-overlay" onclick="fecharMenu()"></div>
