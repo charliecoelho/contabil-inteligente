@@ -958,22 +958,34 @@
       /* NOTIF */
       .notif { bottom: 16px; right: 12px; left: 12px; text-align: center; }
 
-      /* SCROLL E ENVIAR */
-      html { height: -webkit-fill-available; }
-      body { overflow: hidden; min-height: -webkit-fill-available; }
-      #tela-app { height: 100dvh; display: flex; flex-direction: column; }
-      .app-body { flex: 1; overflow: hidden; min-height: 0; }
-      .main { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
-      .aba.ativa { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
-      .dash-scroll, .rel-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; }
-      #aba-chat { display: flex; flex-direction: column; overflow: hidden; }
-      .chat-msgs { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; padding-bottom: 8px; }
-      .chat-input-row { flex-shrink: 0; padding: 10px 12px 32px; background: var(--white); }
-      .btn-enviar { width: 100%; padding: 16px; font-size: 0.92rem; min-height: 52px; }
+      /* LAYOUT MOBILE CORRETO */
+      html, body { height: 100%; overflow: hidden; }
+      #tela-app { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+      .topbar { flex-shrink: 0; }
+      .app-body { flex: 1; overflow: hidden; min-height: 0; display: flex; }
+      .main { flex: 1; overflow: hidden; min-height: 0; display: flex; flex-direction: column; position: relative; }
+
+      /* Abas — só a ativa aparece */
+      .aba { display: none !important; }
+      .aba.ativa { display: flex !important; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+
+      /* Dashboard */
+      #aba-dashboard.ativa { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+      .dash-scroll { overflow: visible; height: auto; }
+
+      /* Chat */
+      #aba-chat.ativa { display: flex !important; flex-direction: column; }
+      .chat-bar { flex-shrink: 0; }
+      .chat-msgs { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; }
       .drop-zone { flex-shrink: 0; }
       #chips-wrap { flex-shrink: 0; }
       #aviso-plano { flex-shrink: 0; }
-      .chat-bar { flex-shrink: 0; }
+      .chat-input-row { flex-shrink: 0; padding: 10px 12px 28px; }
+      .btn-enviar { width: 100%; padding: 16px; font-size: 0.92rem; min-height: 52px; }
+
+      /* Relatório */
+      #aba-relatorio.ativa { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+      .rel-scroll { overflow: visible; height: auto; }
     }
   </style>
 </head>
