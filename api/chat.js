@@ -58,13 +58,13 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo nao permitido.' });
 
-  // Rate limiting
   const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown';
   if (!verificarRateLimit(ip)) {
     return res.status(429).json({ error: 'Muitas requisicoes. Aguarde 1 minuto.' });
   }
 
-  const { messages } = req.body || {};
+  let { messages } = req.body || {};
+
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'Requisicao invalida.' });
   }
@@ -72,6 +72,21 @@ export default async function handler(req, res) {
   if (messages.length > 50) {
     return res.status(400).json({ error: 'Conversa muito longa. Inicie uma nova sessao.' });
   }
+
+  // Normalizar mensagens — aceita content como string ou array
+  messages = messages.map(msg => {
+    if (typeof msg.content === 'string') return msg;
+    if (Array.isArray(msg.content)) {
+      // Mantém array para mensagens com imagens/PDFs
+      // Para mensagens só de texto, simplifica
+      const hasMedia = msg.content.some(c => c.type === 'image' || c.type === 'document');
+      if (!hasMedia) {
+        const textParts = msg.content.filter(c => c.type === 'text').map(c => c.text).join('\n');
+        return { role: msg.role, content: textParts };
+      }
+    }
+    return msg;
+  });
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
