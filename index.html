@@ -156,7 +156,10 @@
           : (txt || 'Analise os documentos com análise fiscal completa e detalhada.');
 
         content.push({type:'text', text: instrucaoModo});
-        window.APP.conversa.push({role:'user', content});
+
+        // Se só tem texto (sem arquivos), simplifica para string
+        const msgContent = arqs.length === 0 ? instrucaoModo : content;
+        window.APP.conversa.push({role:'user', content: msgContent});
 
         atualizarProgresso(arqs.length + 1, arqs.length + 1, 'Analisando com IA...');
 
