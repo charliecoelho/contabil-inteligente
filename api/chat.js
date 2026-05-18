@@ -1,13 +1,12 @@
 // Rate limiting simples em memória
 const rateLimitMap = new Map();
-const LIMITE_POR_MINUTO = 10;
+const LIMITE_POR_MINUTO = 15;
 const JANELA_MS = 60 * 1000;
 
 function verificarRateLimit(ip) {
   const agora = Date.now();
   const registro = rateLimitMap.get(ip) || { count: 0, inicio: agora };
 
-  // Reset se passou 1 minuto
   if (agora - registro.inicio > JANELA_MS) {
     registro.count = 0;
     registro.inicio = agora;
@@ -16,8 +15,7 @@ function verificarRateLimit(ip) {
   registro.count++;
   rateLimitMap.set(ip, registro);
 
-  // Limpa IPs antigos a cada 100 requisições
-  if (rateLimitMap.size > 100) {
+  if (rateLimitMap.size > 200) {
     for (const [key, val] of rateLimitMap.entries()) {
       if (agora - val.inicio > JANELA_MS * 2) rateLimitMap.delete(key);
     }
@@ -27,19 +25,23 @@ function verificarRateLimit(ip) {
 }
 
 export default async function handler(req, res) {
-  // Segurança: só aceita do próprio domínio
+  // CORS — aceita do domínio próprio
   const origin = req.headers.origin || '';
+  const referer = req.headers.referer || '';
   const allowed = [
     'https://contabilinteligente.api.br',
     'https://contabil-inteligente.vercel.app',
     'http://localhost:3000'
   ];
 
-  if (origin && !allowed.includes(origin)) {
+  const origemPermitida = !origin ||
+    allowed.some(a => origin.startsWith(a)) ||
+    allowed.some(a => referer.startsWith(a));
+
+  if (!origemPermitida) {
     return res.status(403).json({ error: 'Origem não autorizada.' });
   }
 
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -48,7 +50,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido.' });
 
   // Rate limiting por IP
-  const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || 'unknown';
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+    || req.socket?.remoteAddress
+    || 'unknown';
+
   if (!verificarRateLimit(ip)) {
     return res.status(429).json({ error: 'Muitas requisições. Aguarde 1 minuto e tente novamente.' });
   }
@@ -59,7 +64,6 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Requisição inválida.' });
   }
 
-  // Limitar tamanho para evitar abuso
   if (messages.length > 50) {
     return res.status(400).json({ error: 'Conversa muito longa. Inicie uma nova sessão.' });
   }
