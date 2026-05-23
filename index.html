@@ -10,7 +10,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
+    import { salvarMemoria, carregarContexto } from '/memoria.js';
+    
     const firebaseConfig = {
       apiKey: "AIzaSyDuOOQEBgaoZuNUMvLrUN3DPetG1mnQTeg",
       authDomain: "contabil-inteligente.firebaseapp.com",
