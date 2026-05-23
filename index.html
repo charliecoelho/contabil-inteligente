@@ -11,7 +11,7 @@
     import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
     import { salvarMemoria, carregarContexto } from '/memoria.js';
-    
+
     const firebaseConfig = {
       apiKey: "AIzaSyDuOOQEBgaoZuNUMvLrUN3DPetG1mnQTeg",
       authDomain: "contabil-inteligente.firebaseapp.com",
@@ -162,13 +162,27 @@
         const msgContent = arqs.length === 0 ? instrucaoModo : content;
         window.APP.conversa.push({role:'user', content: msgContent});
 
+        atualizarProgresso(arqs.length + 1, arqs.length + 1, 'Carregando contexto...');
+
+        // ── Carregar contexto de memória ──────────────────────────────────
+        let contextoMemoria = '';
+        try {
+          if (window.APP.user) {
+            const ctx = await carregarContexto(db, window.APP.user.uid);
+            contextoMemoria = ctx.sistemaExtra || '';
+          }
+        } catch (e) {
+          console.warn('[Memória] Contexto não carregado:', e);
+        }
+
         atualizarProgresso(arqs.length + 1, arqs.length + 1, 'Analisando com IA...');
 
         const resp = await fetch('/api/chat', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
-            messages: window.APP.conversa
+            messages: window.APP.conversa,
+            contextoMemoria,
           })
         });
         const data = await resp.json();
@@ -177,6 +191,16 @@
         window.APP.conversa.push({role:'assistant', content: resposta});
         finalizarProgresso();
         addMsg('assistant', resposta, modo === 'rapido');
+
+        // ── Salvar memória após análise ───────────────────────────────────
+        try {
+          if (window.APP.user) {
+            await salvarMemoria(db, window.APP.user.uid, window.APP.empresa, txt || 'Análise de documentos', resposta);
+          }
+        } catch (e) {
+          console.warn('[Memória] Erro ao salvar (não crítico):', e);
+        }
+
         await salvar(txt||'Análise de documentos', resposta, arqs.length);
         await carregarHistorico();
         atualizarDashboard();
