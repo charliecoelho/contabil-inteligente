@@ -1,10 +1,6 @@
 /**
  * CONTÁBIL INTELIGENTE — API Handler
  * Arquivo: api/chat.js
- *
- * Atualizado para suportar injeção de contexto de memória.
- * O campo opcional `contextoMemoria` na requisição é adicionado
- * dinamicamente ao system prompt antes de cada chamada.
  */
 
 const rateLimitMap = new Map();
@@ -24,8 +20,6 @@ function verificarRateLimit(ip) {
   }
   return registro.count <= LIMITE_POR_MINUTO;
 }
-
-// ─── System Prompt Base ────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT_BASE = `Voce e o Copiloto Empresarial da Contabil Inteligente, especialista em Contabilidade, Gestao Financeira e Fiscalidade Brasileira, com foco no mercado de Mato Grosso.
 
@@ -127,8 +121,6 @@ Quando o usuario fizer perguntas (sem documento):
 FONTES: Legislacao federal, RICMS-MT, ISS Cuiaba, LC 123/06, Resolucao CGSN 140/2018, Embrapa, IMEA.
 TOM: Tecnico mas acessivel. Direto. Educativo. Nunca omita informacoes importantes do documento.`;
 
-// ─── Handler principal ─────────────────────────────────────────────────────────
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -152,14 +144,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Conversa muito longa. Inicie uma nova sessao.' });
   }
 
-  // ── Montar system prompt com contexto de memória (se disponível) ──────────
-  // contextoMemoria é uma string gerada pelo carregarContexto() do memoria.js
-  // Ela é enviada pelo frontend junto com as mensagens
   const systemPrompt = contextoMemoria && contextoMemoria.trim().length > 0
     ? SYSTEM_PROMPT_BASE + '\n' + contextoMemoria
     : SYSTEM_PROMPT_BASE;
 
-  // ── Normalizar mensagens ──────────────────────────────────────────────────
+  // Normalizar mensagens
   messages = messages.map(msg => {
     if (typeof msg.content === 'string') return msg;
     if (Array.isArray(msg.content)) {
@@ -198,7 +187,7 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 4096,
         system: systemPrompt,
         messages: normalized
