@@ -1,5 +1,5 @@
 /**
- * CONTÁBIL INTELIGENTE — API Handler
+ * CONTÁBIL INTELIGENTE — API Handler com Streaming
  * Arquivo: api/chat.js
  */
 
@@ -50,76 +50,35 @@ Classifique cada item antes de calcular:
 Para EXTRATOS BANCARIOS:
 - ENTRADA REAL: PIX recebido, TED recebida, deposito, credito de servico
 - SAIDA REAL: PIX enviado, TED enviada, pagamento, debito, saque, tarifa
-- IGNORAR (nao somar): saldo inicial, saldo final, saldo do dia, limite de credito, saldo a compensar, rendimentos de investimento (salvo se solicitado)
-- Para MEI com conta PF: separar receitas MEI (servicos/vendas) de entradas pessoais (transferencias familiares, outros)
+- IGNORAR (nao somar): saldo inicial, saldo final, saldo do dia, limite de credito, saldo a compensar
+- Para MEI com conta PF: separar receitas MEI de entradas pessoais
 
 Para NF-e / NFS-e:
-- Extrair: numero, serie, data emissao, CNPJ emitente, CNPJ/CPF tomador, descricao, valor bruto, cada imposto separado (ISS, IRRF, PIS, COFINS, CSLL, ICMS, IPI), valor liquido
+- Extrair todos os campos: numero, CNPJ, valores, impostos, retencoes, valor liquido
 - Nao confundir valor bruto com valor liquido
-- Nao somar impostos como receita
 
 Para PDFs EXTENSOS:
-- Processar pagina por pagina
-- Nao pular itens por ser documento longo
-- Se nao conseguir ler alguma parte, informar explicitamente
+- Processar pagina por pagina sem pular itens
 
 ETAPA 4 - CALCULOS VERIFICADOS
 So calcule apos completar o inventario:
-- Some apenas itens classificados como ENTRADA REAL
-- Some apenas itens classificados como SAIDA REAL
-- Declare o saldo separadamente (nunca como receita ou despesa)
-- Confira: Total Entradas - Total Saidas = Resultado do periodo
-- Se houver discrepancia com totais do documento, informe e explique
+- Some apenas ENTRADA REAL e SAIDA REAL
+- Saldo sempre separado (nunca como receita ou despesa)
+- Confira: Entradas - Saidas = Resultado do periodo
 
-=== FORMATO DE RESPOSTA ===
-
-Comece com:
-Acao Imediata: [frase com a acao mais urgente]
-
-Depois estruture:
-
-DOCUMENTO IDENTIFICADO
-- Tipo, emissor, periodo, titular
-
-INVENTARIO (resumo)
-- Total de itens encontrados
-- Tabela com os principais itens
-
-CLASSIFICACAO
-- Entradas reais: R$ X (lista)
-- Saidas reais: R$ X (lista)
-- Ignorados/saldo: R$ X (nao incluso nos calculos)
-
-DIAGNOSTICO FISCAL
-- Regime tributario
-- Retencoes identificadas ou necessarias
-- Alertas fiscais
-
-DIAGNOSTICO FINANCEIRO
-- Resultado do periodo: R$ X
-- Observacoes importantes
-
-DIAGNOSTICO CONTABIL
-- Lancamentos sugeridos
-- Classificacao no plano de contas
-
-ALERTAS E RECOMENDACOES
-- Lista de pontos de atencao
+=== DIAGNOSTICOS ===
+FISCAL: regime, retencoes, alertas fiscais
+FINANCEIRO: resultado do periodo, tabela de valores
+CONTABIL: lancamentos, plano de contas, competencia vs caixa
+ALERTAS: pontos de atencao numerados
 
 === REGRAS POR REGIME ===
-- MEI / SIMPLES NACIONAL: limite R$ 81.000/ano, DAS mensal, sem retencao PIS/COFINS/CSLL pelo tomador (salvo excecoes), ISS conforme municipio
-- LUCRO PRESUMIDO: IRRF 1-1,5% + CSRF 4,65% quando aplicavel e acima dos limites
-- LUCRO REAL: todas as retencoes, credito PIS 1,65% e COFINS 7,6% sobre insumos permitidos
+- MEI / SIMPLES: limite R$ 81.000/ano, DAS mensal, sem retencao PIS/COFINS/CSLL pelo tomador
+- LUCRO PRESUMIDO: IRRF 1-1,5% + CSRF 4,65% quando aplicavel
+- LUCRO REAL: todas retencoes, credito PIS 1,65% COFINS 7,6%
 
-=== MODO CONSULTORIA ===
-Quando o usuario fizer perguntas (sem documento):
-- Responda de forma didatica e objetiva
-- Para MEI: separacao PF/PJ, limites, DAS, IR
-- Para IR: deducoes, fontes pagadoras, carne-leao
-- Para escritorios: fluxos e checklists
-
-FONTES: Legislacao federal, RICMS-MT, ISS Cuiaba, LC 123/06, Resolucao CGSN 140/2018, Embrapa, IMEA.
-TOM: Tecnico mas acessivel. Direto. Educativo. Nunca omita informacoes importantes do documento.`;
+FONTES: Legislacao federal, RICMS-MT, ISS Cuiaba, LC 123/06, Resolucao CGSN 140/2018.
+TOM: Tecnico mas acessivel. Direto. Educativo.`;
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -179,7 +138,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -189,16 +148,55 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 4096,
+        stream: true,
         system: systemPrompt,
         messages: normalized
       })
     });
 
-    const data = await response.json();
-    if (data.error) return res.status(400).json({ error: data.error.message });
-    return res.status(200).json(data);
+    if (!anthropicResponse.ok) {
+      const err = await anthropicResponse.json();
+      return res.status(400).json({ error: err.error?.message || 'Erro na API.' });
+    }
+
+    // Streaming — passa os chunks direto para o cliente
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const reader = anthropicResponse.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') continue;
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+              res.write(`data: ${JSON.stringify({ text: parsed.delta.text })}\n\n`);
+            }
+            if (parsed.type === 'message_stop') {
+              res.write('data: [DONE]\n\n');
+            }
+          } catch(e) {}
+        }
+      }
+    }
+
+    res.end();
 
   } catch (error) {
-    return res.status(500).json({ error: 'Erro interno. Tente novamente.' });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Erro interno. Tente novamente.' });
+    }
+    res.end();
   }
 }
