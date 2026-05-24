@@ -9,8 +9,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-    import { salvarMemoria, carregarContexto } from '/memoria.js';
+    import { getFirestore, doc, getDoc, collection, addDoc, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDuOOQEBgaoZuNUMvLrUN3DPetG1mnQTeg",
@@ -160,55 +159,128 @@
 
         // Se só tem texto (sem arquivos), simplifica para string
         const msgContent = arqs.length === 0 ? instrucaoModo : content;
-        window.APP.conversa.push({role:'user', content: msgContent});
 
-        atualizarProgresso(arqs.length + 1, arqs.length + 1, 'Carregando contexto...');
-
-        // ── Carregar contexto de memória ──────────────────────────────────
-        let contextoMemoria = '';
-        try {
-          if (window.APP.user) {
-            const ctx = await carregarContexto(db, window.APP.user.uid);
-            contextoMemoria = ctx.sistemaExtra || '';
-          }
-        } catch (e) {
-          console.warn('[Memória] Contexto não carregado:', e);
+        // Garante alternância correta — remove mensagens de usuário consecutivas
+        while (window.APP.conversa.length > 0 &&
+               window.APP.conversa[window.APP.conversa.length - 1].role === 'user') {
+          window.APP.conversa.pop();
         }
+
+        window.APP.conversa.push({role:'user', content: msgContent});
 
         atualizarProgresso(arqs.length + 1, arqs.length + 1, 'Analisando com IA...');
 
+        finalizarProgresso();
+        const bubble = addMsgStreaming('assistant');
+        let respostaCompleta = '';
+
+        await fetchStream(
+          window.APP.conversa,
+          (chunk) => {
+            respostaCompleta += chunk;
+            renderBubble(bubble, respostaCompleta);
+          },
+          async () => {
+            window.APP.conversa.push({role:'assistant', content: respostaCompleta});
+            if (modo === 'rapido') {
+              const wrap = document.createElement('div');
+              wrap.id = 'expandir-wrap';
+              wrap.className = 'expandir-wrap';
+              wrap.innerHTML = '<button id="btn-expandir" class="btn-expandir" onclick="expandirAnalise()">Ver análise completa →</button>';
+              document.getElementById('chat-msgs').appendChild(wrap);
+            }
+            await salvar(txt||'Análise de documentos', respostaCompleta, arqs.length);
+            await carregarHistorico();
+            atualizarDashboard();
+          },
+          (e) => {
+            if (window.APP.conversa.length > 0 &&
+                window.APP.conversa[window.APP.conversa.length-1].role === 'user') {
+              window.APP.conversa.pop();
+            }
+            bubble.innerHTML = `⚠️ Erro ao processar: ${e.message || 'Tente novamente.'}`;
+          }
+        );
+      } catch(e) {
+        finalizarProgresso();
+        if (window.APP.conversa.length > 0 &&
+            window.APP.conversa[window.APP.conversa.length-1].role === 'user') {
+          window.APP.conversa.pop();
+        }
+        addMsg('assistant', `⚠️ Erro ao processar: ${e.message || 'Tente novamente.'}`);
+      }
+    };
+
+
+    // ── STREAMING HELPER ──
+    async function fetchStream(messages, onChunk, onDone, onError) {
+      try {
         const resp = await fetch('/api/chat', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            messages: window.APP.conversa,
-            contextoMemoria,
-          })
+          body: JSON.stringify({ messages })
         });
-        const data = await resp.json();
-        if (data.error) throw new Error(data.error.message);
-        const resposta = data.content[0].text;
-        window.APP.conversa.push({role:'assistant', content: resposta});
-        finalizarProgresso();
-        addMsg('assistant', resposta, modo === 'rapido');
 
-        // ── Salvar memória após análise ───────────────────────────────────
-        try {
-          if (window.APP.user) {
-            await salvarMemoria(db, window.APP.user.uid, window.APP.empresa, txt || 'Análise de documentos', resposta);
-          }
-        } catch (e) {
-          console.warn('[Memória] Erro ao salvar (não crítico):', e);
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.error || 'Erro na API');
         }
 
-        await salvar(txt||'Análise de documentos', resposta, arqs.length);
-        await carregarHistorico();
-        atualizarDashboard();
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('
+');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              if (data === '[DONE]') { onDone(); return; }
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.text) onChunk(parsed.text);
+              } catch(e) {}
+            }
+          }
+        }
+        onDone();
       } catch(e) {
-        finalizarProgresso();
-        addMsg('assistant', `⚠️ Erro ao processar: ${e.message}`);
+        onError(e);
       }
-    };
+    }
+
+    function addMsgStreaming(tipo) {
+      const chat = document.getElementById('chat-msgs');
+      const d = document.createElement('div');
+      d.className = `msg msg-${tipo}`;
+      const bubble = document.createElement('div');
+      bubble.className = 'msg-bubble';
+      if (tipo === 'assistant') {
+        const avatar = document.createElement('div');
+        avatar.className = 'msg-avatar';
+        avatar.textContent = 'CI';
+        d.appendChild(avatar);
+      }
+      d.appendChild(bubble);
+      chat.appendChild(d);
+      chat.scrollTop = chat.scrollHeight;
+      return bubble;
+    }
+
+    function renderBubble(bubble, texto) {
+      bubble.innerHTML = texto
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/━+/g, '<hr class="sep">')
+        .replace(/
+/g, '<br>');
+      const chat = document.getElementById('chat-msgs');
+      chat.scrollTop = chat.scrollHeight;
+    }
 
     window.expandirAnalise = async () => {
       const btn = document.getElementById('btn-expandir');
@@ -218,17 +290,24 @@
       atualizarProgresso(1, 1, 'Gerando análise detalhada...');
       window.APP.conversa.push({role:'user', content: 'Agora forneça a análise COMPLETA e DETALHADA dos mesmos documentos. Inclua todos os dados, análise tributária, comparação com mercado de MT, riscos e recomendações práticas numeradas.'});
       try {
-        const resp = await fetch('/api/chat', {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ messages: window.APP.conversa })
-        });
-        const data = await resp.json();
-        if (data.error) throw new Error(data.error.message);
-        const resposta = data.content[0].text;
-        window.APP.conversa.push({role:'assistant', content: resposta});
         finalizarProgresso();
         if (wrap) wrap.remove();
-        addMsg('assistant', resposta, false);
+        const bubble = addMsgStreaming('assistant');
+        let respostaCompleta = '';
+
+        await fetchStream(
+          window.APP.conversa,
+          (chunk) => {
+            respostaCompleta += chunk;
+            renderBubble(bubble, respostaCompleta);
+          },
+          () => {
+            window.APP.conversa.push({role:'assistant', content: respostaCompleta});
+          },
+          (e) => {
+            bubble.innerHTML = `⚠️ Erro: ${e.message}`;
+          }
+        );
       } catch(e) {
         finalizarProgresso();
         addMsg('assistant', `⚠️ Erro: ${e.message}`);
