@@ -26,7 +26,7 @@
     const db = getFirestore(app);
 
     // UID do administrador — substitua pelo seu UID
-    const ADMIN_UID = "X6O1yas8VmZLXZLBpm3H70ZMSBg2";
+    const ADMIN_UID = "COLE_SEU_UID_AQUI";
 
     window.APP = { clientes: [], analises: [] };
 
@@ -106,7 +106,7 @@
       const mesAtual = analises.filter(a => a.mes === agora.getMonth()+1 && a.ano === agora.getFullYear());
       const plus = clientes.filter(c => (c.plano||'').toLowerCase().includes('plus')).length;
       const basico = clientes.length - plus;
-      const receitaEst = (plus * 397) + (basico * 197);
+      const receitaEst = (plus * 379) + (basico * 197);
       const econ = mesAtual.reduce((s,a) => s+(a.economia||0), 0);
 
       document.getElementById('d-clientes').textContent = clientes.length;
@@ -788,7 +788,7 @@
     <label class="lbl">Plano</label>
     <select class="select-inp" id="f-plano">
       <option value="Básico">Básico — R$ 197/mês (até 2 arquivos)</option>
-      <option value="Plus">Plus — R$ 397/mês (até 6 arquivos)</option>
+      <option value="Plus">Plus — R$ 379/mês (até 6 arquivos)</option>
     </select>
 
     <div class="f-erro" id="f-erro"></div>
@@ -814,7 +814,7 @@
     <label class="lbl">Plano</label>
     <select class="select-inp" id="e-plano">
       <option value="Básico">Básico — R$ 197/mês (até 2 arquivos)</option>
-      <option value="Plus">Plus — R$ 397/mês (até 6 arquivos)</option>
+      <option value="Plus">Plus — R$ 379/mês (até 6 arquivos)</option>
     </select>
 
     <div class="f-erro" id="e-erro"></div>
