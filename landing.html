@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contábil Inteligente — Copiloto Fiscal, Financeiro e Contábil</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --azul:     #0F2544;
+      --azul-m:   #1A3A6B;
+      --verde:    #00875A;
+      --verde-l:  #D1FAE5;
+      --dourado:  #F0B429;
+      --dourado-l:#FEF3C7;
+      --branco:   #FFFFFF;
+      --cinza-l:  #F4F6F9;
+      --cinza-m:  #E2E8F0;
+      --cinza-t:  #64748B;
+      --tinta:    #0F172A;
+      --whats:    #25D366;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--branco);
+      color: var(--tinta);
+      overflow-x: hidden;
+    }
+
+    /* ── NAVBAR ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 5%;
+      height: 68px;
+      background: rgba(15,37,68,0.96);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      text-decoration: none;
+    }
+
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: var(--verde);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'DM Mono', monospace;
+      font-size: 13px; font-weight: 500;
+      color: #fff;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-text {
+      font-family: 'Syne', sans-serif;
+      font-size: 1rem; font-weight: 700;
+      color: #fff;
+    }
+
+    .logo-text span { color: var(--dourado); }
+
+    .nav-links {
+      display: flex; align-items: center; gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      text-decoration: none;
+      font-size: 0.85rem; font-weight: 500;
+      color: rgba(255,255,255,0.65);
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: #fff; }
+
+    .btn-login {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #fff !important;
+      padding: 8px 20px;
+      border-radius: 6px;
+      font-size: 0.85rem !important;
+      font-weight: 600 !important;
+      transition: all 0.2s !important;
+    }
+    .btn-login:hover { background: rgba(255,255,255,0.2) !important; }
+
+    .btn-nav-cta {
+      background: var(--verde);
+      color: #fff;
+      padding: 9px 22px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .btn-nav-cta:hover { background: #007A50; transform: translateY(-1px); }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh;
+      background: var(--azul);
+      display: flex; align-items: center;
+      padding: 100px 5% 80px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 70% 50%, rgba(0,135,90,0.12) 0%, transparent 70%),
+        radial-gradient(ellipse 50% 80% at 10% 80%, rgba(240,180,41,0.06) 0%, transparent 60%);
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+      position: relative;
+    }
+
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(0,135,90,0.15);
+      border: 1px solid rgba(0,135,90,0.3);
+      border-radius: 100px;
+      padding: 6px 14px;
+      font-size: 0.75rem; font-weight: 600;
+      color: #4ADE80;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    .hero-badge::before {
+      content: '';
+      width: 6px; height: 6px;
+      background: #4ADE80;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .hero h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2.4rem, 4vw, 3.6rem);
+      font-weight: 800;
+      color: #fff;
+      line-height: 1.1;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 em {
+      font-style: normal;
+      color: var(--dourado);
+    }
+
+    .hero p {
+      font-size: 1.05rem;
+      color: rgba(255,255,255,0.65);
+      line-height: 1.7;
+      margin-bottom: 36px;
+      max-width: 480px;
+    }
+
+    .hero-ctas {
+      display: flex; flex-wrap: wrap; gap: 14px;
+      margin-bottom: 48px;
+    }
+
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--verde);
+      color: #fff;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-size: 0.95rem; font-weight: 600;
+      text-decoration: none;
+      transition: all 0.25s;
+      border: none; cursor: pointer;
+    }
+    .btn-primary:hover { background: #007A50; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,135,90,0.35); }
+
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: transparent;
+      color: #fff;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-size: 0.95rem; font-weight: 600;
+      text-decoration: none;
+      border: 1px solid rgba(255,255,255,0.25);
+      transition: all 0.25s;
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.5); }
+
+    .hero-stats {
+      display: flex; gap: 32px;
+    }
+
+    .stat { }
+    .stat-num {
+      font-family: 'DM Mono', monospace;
+      font-size: 1.6rem; font-weight: 500;
+      color: var(--dourado);
+    }
+    .stat-lbl {
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.45);
+      margin-top: 2px;
+    }
+
+    /* Hero visual */
+    .hero-visual {
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .mockup-card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 28px;
+      width: 100%;
+      max-width: 420px;
+      backdrop-filter: blur(10px);
+    }
+
+    .mockup-header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .mockup-dots { display: flex; gap: 6px; }
+    .mockup-dots span {
+      width: 10px; height: 10px; border-radius: 50%;
+    }
+    .mockup-dots span:nth-child(1) { background: #FF5F57; }
+    .mockup-dots span:nth-child(2) { background: #FFBD2E; }
+    .mockup-dots span:nth-child(3) { background: #28C840; }
+
+    .mockup-title {
+      font-size: 0.75rem; font-weight: 500;
+      color: rgba(255,255,255,0.4);
+      font-family: 'DM Mono', monospace;
+    }
+
+    .mockup-msg {
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 0.82rem;
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+
+    .mockup-msg.ia {
+      background: rgba(0,135,90,0.15);
+      border: 1px solid rgba(0,135,90,0.25);
+      color: rgba(255,255,255,0.85);
+    }
+
+    .mockup-msg.user {
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.7);
+      margin-left: 20px;
+    }
+
+    .mockup-tag {
+      display: inline-block;
+      font-size: 0.68rem; font-weight: 600;
+      padding: 3px 8px; border-radius: 4px;
+      margin-bottom: 6px;
+      font-family: 'DM Mono', monospace;
+      letter-spacing: 0.05em;
+    }
+    .tag-ia { background: rgba(0,135,90,0.25); color: #4ADE80; }
+    .tag-user { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); }
+
+    .mockup-results {
+      margin-top: 16px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+
+    .result-item {
+      display: flex; align-items: center; gap: 10px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .result-icon { font-size: 16px; flex-shrink: 0; }
+    .result-text { font-size: 0.78rem; color: rgba(255,255,255,0.7); }
+    .result-val {
+      margin-left: auto;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.78rem;
+      font-weight: 500;
+    }
+    .val-green { color: #4ADE80; }
+    .val-red { color: #F87171; }
+    .val-yellow { color: var(--dourado); }
+
+    /* ── DIFERENCIAIS ── */
+    .section {
+      padding: 96px 5%;
+    }
+
+    .section-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .section-tag {
+      display: inline-block;
+      font-size: 0.72rem; font-weight: 700;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--verde);
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(1.8rem, 3vw, 2.6rem);
+      font-weight: 800;
+      color: var(--azul);
+      line-height: 1.15;
+      margin-bottom: 16px;
+    }
+
+    .section-sub {
+      font-size: 1rem;
+      color: var(--cinza-t);
+      max-width: 560px;
+      line-height: 1.7;
+      margin-bottom: 56px;
+    }
+
+    .diferenciais-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .dif-card {
+      background: var(--cinza-l);
+      border-radius: 16px;
+      padding: 32px 28px;
+      transition: all 0.25s;
+      border: 1px solid var(--cinza-m);
+    }
+    .dif-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 16px 48px rgba(15,37,68,0.1);
+      border-color: var(--verde);
+    }
+
+    .dif-icon {
+      width: 48px; height: 48px;
+      background: var(--verde);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      margin-bottom: 20px;
+    }
+
+    .dif-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.05rem; font-weight: 700;
+      color: var(--azul);
+      margin-bottom: 10px;
+    }
+
+    .dif-desc {
+      font-size: 0.88rem;
+      color: var(--cinza-t);
+      line-height: 1.65;
+    }
+
+    /* ── PLANOS ── */
+    .planos-section {
+      background: var(--azul);
+      padding: 96px 5%;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .planos-section::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 60% 80% at 80% 50%, rgba(0,135,90,0.1) 0%, transparent 70%);
+    }
+
+    .planos-section .section-title { color: #fff; }
+    .planos-section .section-sub { color: rgba(255,255,255,0.55); }
+    .planos-section .section-tag { color: var(--dourado); }
+
+    .planos-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      max-width: 900px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .plano-card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 40px 36px;
+      transition: all 0.25s;
+    }
+
+    .plano-card.destaque {
+      background: rgba(255,255,255,0.08);
+      border-color: var(--dourado);
+      position: relative;
+    }
+
+    .plano-badge-top {
+      position: absolute;
+      top: -14px; left: 50%; transform: translateX(-50%);
+      background: var(--dourado);
+      color: var(--azul);
+      font-size: 0.7rem; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 5px 16px; border-radius: 100px;
+      white-space: nowrap;
+    }
+
+    .plano-nome {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.1rem; font-weight: 700;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .plano-perfil {
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.45);
+      margin-bottom: 28px;
+    }
+
+    .plano-preco {
+      margin-bottom: 28px;
+    }
+
+    .plano-val {
+      font-family: 'DM Mono', monospace;
+      font-size: 2.4rem; font-weight: 500;
+      color: #fff;
+      line-height: 1;
+    }
+
+    .plano-val.gold { color: var(--dourado); }
+
+    .plano-per {
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.4);
+      margin-top: 4px;
+    }
+
+    .plano-sep {
+      height: 1px;
+      background: rgba(255,255,255,0.08);
+      margin-bottom: 24px;
+    }
+
+    .plano-items {
+      list-style: none;
+      display: flex; flex-direction: column; gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .plano-items li {
+      display: flex; align-items: flex-start; gap: 10px;
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.75);
+      line-height: 1.5;
+    }
+
+    .plano-items li .check { color: #4ADE80; flex-shrink: 0; margin-top: 1px; }
+    .plano-items li .cross { color: rgba(255,255,255,0.25); flex-shrink: 0; margin-top: 1px; }
+
+    .btn-plano {
+      display: block; width: 100%;
+      text-align: center;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 0.9rem; font-weight: 600;
+      text-decoration: none;
+      transition: all 0.25s;
+      cursor: pointer; border: none;
+    }
+
+    .btn-plano-basic {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #fff;
+    }
+    .btn-plano-basic:hover { background: rgba(255,255,255,0.2); }
+
+    .btn-plano-plus {
+      background: var(--dourado);
+      color: var(--azul);
+    }
+    .btn-plano-plus:hover { background: #E0A820; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(240,180,41,0.3); }
+
+    /* ── COMO FUNCIONA ── */
+    .como-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 32px;
+      counter-reset: steps;
+    }
+
+    .como-step {
+      text-align: center;
+      position: relative;
+    }
+
+    .como-step::after {
+      content: '';
+      position: absolute;
+      top: 28px; right: -16px;
+      width: 32px; height: 2px;
+      background: var(--cinza-m);
+    }
+    .como-step:last-child::after { display: none; }
+
+    .como-num {
+      width: 56px; height: 56px;
+      background: var(--azul);
+      color: #fff;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'DM Mono', monospace;
+      font-size: 1rem; font-weight: 500;
+      margin: 0 auto 20px;
+    }
+
+    .como-titulo {
+      font-family: 'Syne', sans-serif;
+      font-size: 0.95rem; font-weight: 700;
+      color: var(--azul);
+      margin-bottom: 8px;
+    }
+
+    .como-desc {
+      font-size: 0.82rem;
+      color: var(--cinza-t);
+      line-height: 1.6;
+    }
+
+    /* ── CTA FINAL ── */
+    .cta-section {
+      background: var(--verde);
+      padding: 80px 5%;
+      text-align: center;
+    }
+
+    .cta-section h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(1.8rem, 3vw, 2.4rem);
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 16px;
+    }
+
+    .cta-section p {
+      font-size: 1rem;
+      color: rgba(255,255,255,0.8);
+      margin-bottom: 36px;
+    }
+
+    .cta-btns {
+      display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;
+    }
+
+    .btn-cta-white {
+      background: #fff;
+      color: var(--verde);
+      padding: 14px 32px;
+      border-radius: 8px;
+      font-size: 0.95rem; font-weight: 700;
+      text-decoration: none;
+      transition: all 0.25s;
+    }
+    .btn-cta-white:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+
+    .btn-cta-outline {
+      background: transparent;
+      color: #fff;
+      padding: 14px 32px;
+      border-radius: 8px;
+      font-size: 0.95rem; font-weight: 600;
+      text-decoration: none;
+      border: 2px solid rgba(255,255,255,0.6);
+      transition: all 0.25s;
+    }
+    .btn-cta-outline:hover { border-color: #fff; background: rgba(255,255,255,0.1); }
+
+    /* ── FOOTER ── */
+    footer {
+      background: var(--tinta);
+      padding: 40px 5%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-logo {
+      display: flex; align-items: center; gap: 10px;
+      text-decoration: none;
+    }
+
+    .footer-copy {
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.35);
+    }
+
+    .footer-links {
+      display: flex; gap: 24px;
+    }
+
+    .footer-links a {
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.35);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: rgba(255,255,255,0.7); }
+
+    /* ── WHATSAPP FIXO ── */
+    .whats-btn {
+      position: fixed;
+      bottom: 28px; right: 28px;
+      width: 60px; height: 60px;
+      background: var(--whats);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 20px rgba(37,211,102,0.4);
+      z-index: 200;
+      text-decoration: none;
+      transition: all 0.25s;
+      animation: whatsFloat 3s ease-in-out infinite;
+    }
+    .whats-btn:hover {
+      transform: scale(1.1);
+      box-shadow: 0 8px 32px rgba(37,211,102,0.5);
+    }
+
+    .whats-btn svg { width: 32px; height: 32px; fill: #fff; }
+
+    @keyframes whatsFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+
+    .whats-tooltip {
+      position: fixed;
+      bottom: 38px; right: 96px;
+      background: var(--azul);
+      color: #fff;
+      font-size: 0.78rem; font-weight: 500;
+      padding: 8px 14px;
+      border-radius: 8px;
+      white-space: nowrap;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .whats-btn:hover ~ .whats-tooltip { opacity: 1; }
+
+    /* ── MOBILE ── */
+    @media (max-width: 768px) {
+      nav { padding: 0 4%; }
+      .nav-links { display: none; }
+      .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+      .hero-visual { display: none; }
+      .hero { padding: 100px 4% 60px; }
+      .hero h1 { font-size: 2.2rem; }
+      .diferenciais-grid { grid-template-columns: 1fr; }
+      .planos-grid { grid-template-columns: 1fr; }
+      .como-grid { grid-template-columns: repeat(2,1fr); }
+      .como-step::after { display: none; }
+      footer { flex-direction: column; align-items: flex-start; }
+      .hero-stats { gap: 20px; }
+      .whats-btn { bottom: 20px; right: 20px; width: 54px; height: 54px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo">
+    <div class="logo-icon">CI</div>
+    <span class="logo-text">Contábil <span>Inteligente</span></span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#diferenciais">Recursos</a></li>
+    <li><a href="#como">Como funciona</a></li>
+    <li><a href="#planos">Planos</a></li>
+    <li><a href="https://wa.me/5565934299981" target="_blank">Suporte</a></li>
+    <li><a href="/index.html" class="btn-login">Acessar plataforma →</a></li>
+  </ul>
+  <a href="https://wa.me/5565934299981" target="_blank" class="btn-nav-cta" style="display:none" id="nav-cta-mobile">Falar no WhatsApp</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-grid">
+    <div class="hero-content">
+      <div class="hero-badge">IA para Contabilidade</div>
+      <h1>Copiloto <em>Fiscal, Financeiro</em> e Contábil</h1>
+      <p>Analise NFs, extratos e laudos de solo em segundos. Identifique créditos tributários, riscos fiscais e economize horas de trabalho manual.</p>
+      <div class="hero-ctas">
+        <a href="https://wa.me/5565934299981?text=Olá!%20Quero%20conhecer%20o%20Contábil%20Inteligente" target="_blank" class="btn-primary">
+          💬 Falar com especialista
+        </a>
+        <a href="/index.html" class="btn-secondary">
+          Já sou cliente →
+        </a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat">
+          <div class="stat-num">R$ 197</div>
+          <div class="stat-lbl">a partir de / mês</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">24h</div>
+          <div class="stat-lbl">disponível sempre</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">3</div>
+          <div class="stat-lbl">pilares integrados</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-visual">
+      <div class="mockup-card">
+        <div class="mockup-header">
+          <div class="mockup-dots">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="mockup-title">ci.assistant · análise fiscal</div>
+        </div>
+        <div>
+          <div class="mockup-tag tag-user">Você</div>
+          <div class="mockup-msg user">Analise esta NFS-e do meu cliente MEI. Plano Plus.</div>
+        </div>
+        <div style="margin-top:12px">
+          <div class="mockup-tag tag-ia">CI · Copiloto</div>
+          <div class="mockup-msg ia">Ação Imediata: Reter R$ 36,50 de ISS antes de efetuar o pagamento ao prestador.</div>
+        </div>
+        <div class="mockup-results">
+          <div class="result-item">
+            <span class="result-icon">💰</span>
+            <span class="result-text">Crédito COFINS identificado</span>
+            <span class="result-val val-green">R$ 247,00</span>
+          </div>
+          <div class="result-item">
+            <span class="result-icon">⚠️</span>
+            <span class="result-text">Risco fiscal — CFOP incorreto</span>
+            <span class="result-val val-red">MÉDIO</span>
+          </div>
+          <div class="result-item">
+            <span class="result-icon">📋</span>
+            <span class="result-text">Regime tributário detectado</span>
+            <span class="result-val val-yellow">Simples</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DIFERENCIAIS -->
+<section class="section" id="diferenciais">
+  <div class="section-inner">
+    <div class="section-tag">Por que o Contábil Inteligente</div>
+    <h2 class="section-title">Três pilares.<br>Uma plataforma.</h2>
+    <p class="section-sub">Análise integrada que vai do documento ao diagnóstico — sem planilhas, sem horas de trabalho manual.</p>
+
+    <div class="diferenciais-grid">
+      <div class="dif-card">
+        <div class="dif-icon">⚖️</div>
+        <div class="dif-title">Diagnóstico Fiscal</div>
+        <div class="dif-desc">Identifica retenções obrigatórias (ISS, IRRF, PIS, COFINS, CSLL), alerta riscos de autuação e verifica CFOP e regimes tributários automaticamente.</div>
+      </div>
+      <div class="dif-card">
+        <div class="dif-icon">📊</div>
+        <div class="dif-title">Diagnóstico Financeiro</div>
+        <div class="dif-desc">Calcula valor bruto vs. líquido, orienta contas a pagar, separa o que vai para o fornecedor do que precisa ser reservado para guias tributárias.</div>
+      </div>
+      <div class="dif-card">
+        <div class="dif-icon">📒</div>
+        <div class="dif-title">Diagnóstico Contábil</div>
+        <div class="dif-desc">Explica débito e crédito de forma didática, classifica no Plano de Contas e diferencia o momento do fato gerador do momento do pagamento.</div>
+      </div>
+      <div class="dif-card">
+        <div class="dif-icon">🌾</div>
+        <div class="dif-title">Agronegócio e Solo</div>
+        <div class="dif-desc">Analisa laudos de solo com recomendações de calcário, NPK e micronutrientes por cultura. Referências EMBRAPA, IMEA e MAPA para MT.</div>
+      </div>
+      <div class="dif-card">
+        <div class="dif-icon">🤖</div>
+        <div class="dif-title">IA Especializada em MT</div>
+        <div class="dif-desc">Treinada com legislação federal, RICMS-MT, ISS de Cuiabá e realidade do agronegócio de Mato Grosso. Não é IA genérica.</div>
+      </div>
+      <div class="dif-card">
+        <div class="dif-icon">📱</div>
+        <div class="dif-title">Acesso em Qualquer Lugar</div>
+        <div class="dif-desc">Funciona no computador, celular e tablet. Tire foto da NF na hora da visita ao cliente. Sem instalação, sem complicação.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- COMO FUNCIONA -->
+<section class="section" style="background:var(--cinza-l)" id="como">
+  <div class="section-inner">
+    <div class="section-tag">Simples assim</div>
+    <h2 class="section-title">Como funciona</h2>
+    <p class="section-sub">Do documento ao diagnóstico em menos de 2 minutos.</p>
+
+    <div class="como-grid">
+      <div class="como-step">
+        <div class="como-num">01</div>
+        <div class="como-titulo">Acesse a plataforma</div>
+        <div class="como-desc">Login no site pelo computador ou celular. Sem instalação.</div>
+      </div>
+      <div class="como-step">
+        <div class="como-num">02</div>
+        <div class="como-titulo">Envie o documento</div>
+        <div class="como-desc">Foto, PDF ou imagem. NF-e, extrato bancário, laudo de solo.</div>
+      </div>
+      <div class="como-step">
+        <div class="como-num">03</div>
+        <div class="como-titulo">IA analisa tudo</div>
+        <div class="como-desc">Diagnóstico fiscal, financeiro e contábil em segundos.</div>
+      </div>
+      <div class="como-step">
+        <div class="como-num">04</div>
+        <div class="como-titulo">Ação imediata</div>
+        <div class="como-desc">Receba o resumo, os alertas e o que fazer agora.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PLANOS -->
+<section class="planos-section" id="planos">
+  <div class="section-inner" style="text-align:center">
+    <div class="section-tag">Planos e preços</div>
+    <h2 class="section-title">Escolha seu plano</h2>
+    <p class="section-sub" style="margin:0 auto 56px">Sem taxa de adesão. Acesso imediato. Cancele quando quiser.</p>
+
+    <div class="planos-grid">
+
+      <!-- BÁSICO -->
+      <div class="plano-card">
+        <div class="plano-nome">Plano Básico</div>
+        <div class="plano-perfil">Ideal para BPO Financeiro, PF, MEI e Técnico Agrícola</div>
+        <div class="plano-preco">
+          <div class="plano-val">R$ 197</div>
+          <div class="plano-per">/mês · R$ 6,56 por dia</div>
+        </div>
+        <div class="plano-sep"></div>
+        <ul class="plano-items">
+          <li><span class="check">✓</span> Análise de extratos bancários</li>
+          <li><span class="check">✓</span> Laudos de solo e agronegócio</li>
+          <li><span class="check">✓</span> Dúvidas sobre MEI, IR e DAS</li>
+          <li><span class="check">✓</span> Conciliação bancária</li>
+          <li><span class="check">✓</span> Até 2 arquivos por análise</li>
+          <li><span class="check">✓</span> Suporte via WhatsApp</li>
+          <li><span class="cross">✗</span> NF-e, NFS-e, CT-e</li>
+          <li><span class="cross">✗</span> Créditos ICMS/PIS/COFINS</li>
+          <li><span class="cross">✗</span> Relatório mensal fiscal</li>
+        </ul>
+        <a href="https://wa.me/5565934299981?text=Olá!%20Quero%20contratar%20o%20Plano%20Básico%20do%20Contábil%20Inteligente" target="_blank" class="btn-plano btn-plano-basic">
+          Contratar Básico
+        </a>
+      </div>
+
+      <!-- PLUS -->
+      <div class="plano-card destaque">
+        <div class="plano-badge-top">✦ Mais popular</div>
+        <div class="plano-nome">Plano Plus</div>
+        <div class="plano-perfil">Ideal para PJ, Escritórios Contábeis, Fiscal e Financeiro</div>
+        <div class="plano-preco">
+          <div class="plano-val gold">R$ 379</div>
+          <div class="plano-per">/mês · R$ 12,63 por dia</div>
+        </div>
+        <div class="plano-sep"></div>
+        <ul class="plano-items">
+          <li><span class="check">✓</span> Tudo do plano Básico</li>
+          <li><span class="check">✓</span> NF-e, NFS-e e CT-e</li>
+          <li><span class="check">✓</span> Créditos de ICMS, PIS e COFINS</li>
+          <li><span class="check">✓</span> Riscos fiscais e erros de CFOP</li>
+          <li><span class="check">✓</span> Retenções por regime tributário</li>
+          <li><span class="check">✓</span> Relatório mensal automático</li>
+          <li><span class="check">✓</span> Até 6 arquivos por análise</li>
+          <li><span class="check">✓</span> Todos os setores de MT</li>
+          <li><span class="check">✓</span> Suporte prioritário WhatsApp</li>
+        </ul>
+        <a href="https://wa.me/5565934299981?text=Olá!%20Quero%20contratar%20o%20Plano%20Plus%20do%20Contábil%20Inteligente" target="_blank" class="btn-plano btn-plano-plus">
+          Contratar Plus
+        </a>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- CTA FINAL -->
+<section class="cta-section">
+  <div style="max-width:700px;margin:0 auto">
+    <h2>Pronto para economizar horas de análise?</h2>
+    <p>Fale com nossa equipe agora e comece a usar em menos de 24 horas.</p>
+    <div class="cta-btns">
+      <a href="https://wa.me/5565934299981?text=Olá!%20Quero%20conhecer%20o%20Contábil%20Inteligente" target="_blank" class="btn-cta-white">
+        💬 Falar no WhatsApp
+      </a>
+      <a href="/index.html" class="btn-cta-outline">
+        Já sou cliente →
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <a href="#" class="footer-logo">
+    <div class="logo-icon">CI</div>
+    <span class="logo-text" style="color:#fff">Contábil <span style="color:var(--dourado)">Inteligente</span></span>
+  </a>
+  <div class="footer-copy">© 2026 Contábil Inteligente · contabilinteligente.api.br</div>
+  <div class="footer-links">
+    <a href="/index.html">Acessar plataforma</a>
+    <a href="https://wa.me/5565934299981" target="_blank">Suporte</a>
+  </div>
+</footer>
+
+<!-- WHATSAPP FIXO -->
+<a href="https://wa.me/5565934299981?text=Olá!%20Vim%20pelo%20site%20e%20quero%20saber%20mais%20sobre%20o%20Contábil%20Inteligente" target="_blank" class="whats-btn" aria-label="Falar no WhatsApp">
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+  </svg>
+</a>
+<div class="whats-tooltip">Falar no WhatsApp</div>
+
+<script>
+  // Mobile nav CTA
+  if (window.innerWidth <= 768) {
+    document.getElementById('nav-cta-mobile').style.display = 'inline-flex';
+  }
+
+  // Scroll suave para âncoras
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      const target = document.querySelector(a.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
