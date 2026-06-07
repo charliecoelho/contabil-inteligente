@@ -5,7 +5,8 @@
  * Fluxo:
  *  1. IA extrai dados estruturados em JSON
  *  2. api/regras.js faz os cálculos (nunca a IA)
- *  3. Resultado injetado na resposta final via streaming
+ *  3. CNPJ extraído → consulta ReceitaWS → regime injetado automaticamente
+ *  4. Resultado injetado na resposta final via streaming
  */
 
 import {
@@ -38,13 +39,98 @@ function verificarRateLimit(ip) {
 }
 
 // ─────────────────────────────────────────────
+// CONSULTA CNPJ — ReceitaWS
+// ─────────────────────────────────────────────
+
+/**
+ * Extrai o primeiro CNPJ válido encontrado em um texto
+ * @param {string} texto
+ * @returns {string|null} CNPJ com 14 dígitos ou null
+ */
+function extrairCNPJ(texto) {
+  if (!texto) return null;
+  // Remove formatação e busca sequência de 14 dígitos após remoção de . - /
+  const semFormato = texto.replace(/[.\-\/]/g, ' ');
+  const matches = semFormato.match(/\b\d{14}\b/g);
+  if (!matches) {
+    // Tenta formato mascarado: XX.XXX.XXX/XXXX-XX
+    const mascara = texto.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g);
+    if (!mascara) return null;
+    return mascara[0].replace(/[.\-\/]/g, '');
+  }
+  return matches[0];
+}
+
+/**
+ * Mapeia o código de natureza jurídica/porte para regime tributário provável
+ */
+function inferirRegime(dados) {
+  const porte = (dados.porte || '').toUpperCase();
+  const natureza = (dados.natureza_juridica || '').toUpperCase();
+  const situacao = (dados.situacao || '').toUpperCase();
+
+  if (situacao !== 'ATIVA') return 'desconhecido';
+
+  // MEI tem natureza jurídica específica (213-5)
+  if (natureza.includes('213-5') || natureza.includes('MEI') || porte === 'MEI') return 'mei';
+
+  // Simples Nacional por porte (ME ou EPP geralmente optam)
+  if (porte === 'ME' || porte === 'EPP') return 'simples';
+
+  // Demais portes: presumido como padrão conservador
+  return 'presumido';
+}
+
+/**
+ * Consulta ReceitaWS e retorna dados da empresa
+ * @param {string} cnpj — 14 dígitos sem formatação
+ * @returns {object|null}
+ */
+async function consultarCNPJ(cnpj) {
+  if (!cnpj || cnpj.length !== 14) return null;
+
+  try {
+    const url = `https://receitaws.com.br/v1/cnpj/${cnpj}`;
+    const resp = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(5000) // timeout 5s para não travar o fluxo
+    });
+
+    if (!resp.ok) return null;
+
+    const dados = await resp.json();
+
+    if (dados.status === 'ERROR') return null;
+
+    const regime = inferirRegime(dados);
+
+    return {
+      cnpj: cnpj,
+      cnpj_formatado: cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5'),
+      razao_social: dados.nome || null,
+      nome_fantasia: dados.fantasia || null,
+      situacao: dados.situacao || null,
+      porte: dados.porte || null,
+      natureza_juridica: dados.natureza_juridica || null,
+      municipio: dados.municipio || null,
+      uf: dados.uf || null,
+      regime_inferido: regime,
+      data_abertura: dados.abertura || null,
+      atividade_principal: dados.atividade_principal?.[0]?.text || null,
+    };
+  } catch (e) {
+    // Timeout ou erro de rede — não bloqueia o fluxo principal
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────
 // SYSTEM PROMPT — MODO EXTRAÇÃO JSON
-// Usado quando há documento (extrato, NF, laudo)
 // ─────────────────────────────────────────────
 
 const SYSTEM_PROMPT_JSON = `Voce e o motor de extracao estruturada do Contabil Inteligente.
 
-Quando o usuario enviar um documento (extrato bancario, NF-e, NFS-e, CT-e, laudo de solo ou boleto), 
+Quando o usuario enviar um documento (extrato bancario, NF-e, NFS-e, CT-e, laudo de solo ou boleto),
 voce deve retornar APENAS um objeto JSON valido, sem texto antes ou depois, sem markdown, sem backticks.
 
 === FORMATO PARA EXTRATO BANCARIO ===
@@ -112,7 +198,6 @@ voce deve retornar APENAS um objeto JSON valido, sem texto antes ou depois, sem 
 
 // ─────────────────────────────────────────────
 // SYSTEM PROMPT — MODO CONSULTORIA
-// Usado para perguntas sem documento
 // ─────────────────────────────────────────────
 
 const SYSTEM_PROMPT_BASE = `Voce e o Copiloto Empresarial da Contabil Inteligente, especialista em Contabilidade, Gestao Financeira, Fiscalidade Brasileira e Agronomia, com foco no mercado de Mato Grosso.
@@ -147,7 +232,21 @@ Ao receber esse bloco:
 1. NAO refaca os calculos — use os valores exatos do JSON
 2. Apresente os resultados em tabela formatada
 3. Adicione analise, alertas fiscais e recomendacoes
-4. Siga o protocolo de 4 etapas na narrativa (identificacao, inventario, classificacao, resultado)
+4. Siga o protocolo de 4 etapas na narrativa
+
+=== QUANDO RECEBER DADOS DE CNPJ ===
+
+Voce vai receber um bloco como:
+
+[DADOS_CNPJ]
+{ ...json com dados da empresa... }
+[/DADOS_CNPJ]
+
+Ao receber esse bloco:
+1. Use o regime_inferido como base para calculos de retencao
+2. Mencione a razao social e porte na analise
+3. Se regime = "mei", aplique automaticamente as regras MEI (sem retencao ISS, PIS, COFINS, CSLL)
+4. Se situacao != "ATIVA", alerte o cliente
 
 === PROTOCOLO OBRIGATORIO DE ANALISE ===
 
@@ -156,7 +255,6 @@ ETAPA 1 - IDENTIFICACAO DO DOCUMENTO
 
 ETAPA 2 - INVENTARIO COMPLETO
 - Confirme a quantidade total de transacoes processadas
-- Para PDFs extensos: confirme que todas as paginas foram processadas
 
 ETAPA 3 - CLASSIFICACAO
 Para EXTRATOS:
@@ -167,12 +265,9 @@ Para EXTRATOS:
 
 Para NF-e / NFS-e (PLUS):
 - Extrair numero, CNPJ, valores, impostos, retencoes, valor liquido
-- Nao confundir valor bruto com liquido
 
 Para LAUDOS DE SOLO:
-- Extrair todos os parametros analisados
-- Comparar com faixas de referencia (ideal, baixo, alto)
-- Identificar deficiencias e excessos
+- Extrair todos os parametros, comparar com faixas de referencia
 
 ETAPA 4 - RESULTADOS E RECOMENDACOES
 - Use os valores calculados pelo backend
@@ -186,24 +281,13 @@ Quando o usuario for tecnico agricola ou enviar laudo de solo, atue como consult
 ANALISE DE LAUDO DE SOLO:
 1. Identifique a cultura alvo (soja, milho, algodao, pastagem, etc)
 2. Extraia TODOS os parametros: pH, MO, P, K, Ca, Mg, S, micronutrientes, CTC, V%, argila
-3. Para cada parametro, informe:
-   - Valor encontrado
-   - Faixa ideal para a cultura
-   - Classificacao: DEFICIENTE / ADEQUADO / ALTO / MUITO ALTO
-   - Impacto na producao se fora da faixa ideal
-4. Recomendacoes de corretivos e fertilizantes:
-   - Calcario: dose e PRNT recomendado
-   - Gessagem: quando necessaria e dose
-   - Adubacao de base: NPK por ha
-   - Adubacao de cobertura: quando e quanto
-   - Micronutrientes deficientes: produto e dose
-5. Estimativa de custo da correcao por hectare
-6. Comparacao com medias de MT (fonte: EMBRAPA/IMEA)
+3. Para cada parametro: valor, faixa ideal, classificacao DEFICIENTE/ADEQUADO/ALTO/MUITO ALTO, impacto
+4. Recomendacoes: calcario, gessagem, NPK por ha, micronutrientes, custo por hectare
+5. Comparacao com medias de MT (fonte: EMBRAPA/IMEA)
 
 === DIAGNOSTICOS (PLANO PLUS) ===
-
-FISCAL: regime tributario, retencoes, alertas fiscais com nivel BAIXO/MEDIO/ALTO
-FINANCEIRO: tabela de entradas/saidas/resultado, saldo informativo
+FISCAL: regime tributario, retencoes, alertas fiscais BAIXO/MEDIO/ALTO
+FINANCEIRO: tabela entradas/saidas/resultado, saldo informativo
 CONTABIL: lancamentos, plano de contas, competencia vs caixa
 
 === REGRAS POR REGIME (PLANO PLUS) ===
@@ -212,11 +296,7 @@ CONTABIL: lancamentos, plano de contas, competencia vs caixa
 - LUCRO REAL: todas retencoes, credito PIS 1,65% COFINS 7,6%
 
 === MODO CONSULTORIA ===
-Para perguntas sem documento:
-- Responda de forma didatica e objetiva
-- MEI: separacao PF/PJ, limites, DAS, IR
-- Tecnico agricola: interpretacao, recomendacoes, calculos agronomicos
-- Escritorios: fluxos e checklists
+Para perguntas sem documento: resposta didatica e objetiva.
 
 === FORMATO DE RESPOSTA ===
 Comece com: Acao Imediata: [frase com a acao mais urgente]
@@ -227,12 +307,9 @@ TOM: Tecnico mas acessivel. Direto. Educativo.
 FONTES: EMBRAPA, IMEA, MAPA, SENAR, CREA-MT, legislacao federal, RICMS-MT, ISS Cuiaba, LC 123/06, CGSN 140/2018.`;
 
 // ─────────────────────────────────────────────
-// DETECÇÃO DE DOCUMENTO NA MENSAGEM
+// DETECÇÃO DE DOCUMENTO
 // ─────────────────────────────────────────────
 
-/**
- * Verifica se a última mensagem do usuário contém um documento (imagem/PDF)
- */
 function contemDocumento(messages) {
   const ultimaMensagem = [...messages].reverse().find(m => m.role === 'user');
   if (!ultimaMensagem || !Array.isArray(ultimaMensagem.content)) return false;
@@ -243,9 +320,6 @@ function contemDocumento(messages) {
 // EXTRAÇÃO JSON VIA IA (FASE 1)
 // ─────────────────────────────────────────────
 
-/**
- * Chama a IA no modo extração — retorna JSON estruturado
- */
 async function extrairJSON(messages, apiKey) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -276,8 +350,6 @@ async function extrairJSON(messages, apiKey) {
 
   const data = await response.json();
   const texto = data.content?.find(c => c.type === 'text')?.text || '';
-
-  // Remove possíveis backticks residuais
   const limpo = texto.replace(/```json|```/gi, '').trim();
 
   try {
@@ -291,9 +363,6 @@ async function extrairJSON(messages, apiKey) {
 // CÁLCULO NO BACKEND (FASE 2)
 // ─────────────────────────────────────────────
 
-/**
- * Aplica os guardrails e calcula os resultados a partir do JSON extraído
- */
 function processarJSON(json) {
   if (!json || !json.tipo_documento) return null;
 
@@ -304,7 +373,6 @@ function processarJSON(json) {
       const resultado = calcularExtrato(json.transacoes, json.regime);
       return { tipo: 'extrato_bancario', meta: json, ...resultado };
     }
-
     case 'nfse':
     case 'nfe': {
       const retencoes = calcularRetencoes({
@@ -314,12 +382,9 @@ function processarJSON(json) {
       });
       return { tipo: json.tipo_documento, meta: json, ...retencoes };
     }
-
     case 'laudo_solo': {
-      // Laudos de solo: sem cálculo financeiro — retorna dados estruturados
       return { tipo: 'laudo_solo', meta: json, parametros: json.parametros };
     }
-
     default:
       return null;
   }
@@ -329,29 +394,35 @@ function processarJSON(json) {
 // RESPOSTA FINAL VIA STREAMING (FASE 3)
 // ─────────────────────────────────────────────
 
-/**
- * Chama a IA no modo consultoria com os resultados calculados
- */
-async function responderComResultados(messages, resultadoCalculo, contextoMemoria, apiKey) {
-  // Injeta resultado do backend na última mensagem do usuário
+async function responderComResultados(messages, resultadoCalculo, dadosCNPJ, contextoMemoria, apiKey) {
   const mensagensComResultado = [...messages];
   const ultimoIdx = [...mensagensComResultado].map(m => m.role).lastIndexOf('user');
 
-  if (ultimoIdx >= 0 && resultadoCalculo) {
+  if (ultimoIdx >= 0) {
     const ultima = mensagensComResultado[ultimoIdx];
-    const injecao = `\n\n[RESULTADO_CALCULO]\n${JSON.stringify(resultadoCalculo, null, 2)}\n[/RESULTADO_CALCULO]`;
+    let injecao = '';
 
-    if (typeof ultima.content === 'string') {
-      mensagensComResultado[ultimoIdx] = { ...ultima, content: ultima.content + injecao };
-    } else if (Array.isArray(ultima.content)) {
-      const novosItens = [...ultima.content];
-      const idxTexto = novosItens.findLastIndex(c => c.type === 'text');
-      if (idxTexto >= 0) {
-        novosItens[idxTexto] = { ...novosItens[idxTexto], text: novosItens[idxTexto].text + injecao };
-      } else {
-        novosItens.push({ type: 'text', text: injecao });
+    if (resultadoCalculo) {
+      injecao += `\n\n[RESULTADO_CALCULO]\n${JSON.stringify(resultadoCalculo, null, 2)}\n[/RESULTADO_CALCULO]`;
+    }
+
+    if (dadosCNPJ) {
+      injecao += `\n\n[DADOS_CNPJ]\n${JSON.stringify(dadosCNPJ, null, 2)}\n[/DADOS_CNPJ]`;
+    }
+
+    if (injecao) {
+      if (typeof ultima.content === 'string') {
+        mensagensComResultado[ultimoIdx] = { ...ultima, content: ultima.content + injecao };
+      } else if (Array.isArray(ultima.content)) {
+        const novosItens = [...ultima.content];
+        const idxTexto = novosItens.findLastIndex(c => c.type === 'text');
+        if (idxTexto >= 0) {
+          novosItens[idxTexto] = { ...novosItens[idxTexto], text: novosItens[idxTexto].text + injecao };
+        } else {
+          novosItens.push({ type: 'text', text: injecao });
+        }
+        mensagensComResultado[ultimoIdx] = { ...ultima, content: novosItens };
       }
-      mensagensComResultado[ultimoIdx] = { ...ultima, content: novosItens };
     }
   }
 
@@ -384,7 +455,7 @@ async function responderComResultados(messages, resultadoCalculo, contextoMemori
 }
 
 // ─────────────────────────────────────────────
-// NORMALIZAÇÃO DE MENSAGENS (mantida do original)
+// NORMALIZAÇÃO DE MENSAGENS
 // ─────────────────────────────────────────────
 
 function normalizarMensagens(messages) {
@@ -452,19 +523,48 @@ export default async function handler(req, res) {
 
   try {
     let resultadoCalculo = null;
+    let dadosCNPJ = null;
 
-    // FASE 1 + 2: se há documento, extrair JSON e calcular no backend
     if (contemDocumento(messages)) {
+      // Fase 1: extração JSON pela IA
       const jsonExtraido = await extrairJSON(messages, apiKey);
+
       if (jsonExtraido) {
+        // Fase 2a: cálculos pelo backend
         resultadoCalculo = processarJSON(jsonExtraido);
+
+        // Fase 2b: CNPJ automático — busca em paralelo sem bloquear
+        const cnpjBruto =
+          jsonExtraido.cnpj_cpf ||
+          jsonExtraido.cnpj_emissor ||
+          jsonExtraido.cnpj_tomador ||
+          null;
+
+        const cnpjLimpo = cnpjBruto
+          ? extrairCNPJ(String(cnpjBruto))
+          : null;
+
+        if (cnpjLimpo) {
+          dadosCNPJ = await consultarCNPJ(cnpjLimpo);
+
+          // Se a ReceitaWS confirmou o regime, atualiza os cálculos
+          if (dadosCNPJ && dadosCNPJ.regime_inferido !== 'desconhecido') {
+            if (resultadoCalculo && resultadoCalculo.tipo === 'extrato_bancario' && jsonExtraido.regime === 'desconhecido') {
+              resultadoCalculo = processarJSON({
+                ...jsonExtraido,
+                regime: dadosCNPJ.regime_inferido
+              });
+            }
+          }
+        }
       }
     }
 
-    // FASE 3: resposta final com streaming
+    // Fase 3: resposta final com streaming
     const anthropicResponse = await responderComResultados(
       messages,
       resultadoCalculo,
+      dadosCNPJ,
       contextoMemoria,
       apiKey
     );
@@ -474,16 +574,22 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: err.error?.message || 'Erro na API.' });
     }
 
-    // Streaming SSE
+    // SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    // Se houve cálculo, envia metadado antes do streaming de texto
+    // Envia card de resultado calculado
     if (resultadoCalculo && !resultadoCalculo.erro) {
       res.write(`data: ${JSON.stringify({ tipo: 'resultado_calculo', dados: resultadoCalculo })}\n\n`);
     }
 
+    // Envia card de CNPJ (independente do resultado)
+    if (dadosCNPJ) {
+      res.write(`data: ${JSON.stringify({ tipo: 'dados_cnpj', dados: dadosCNPJ })}\n\n`);
+    }
+
+    // Streaming de texto
     const reader = anthropicResponse.body.getReader();
     const decoder = new TextDecoder();
 
