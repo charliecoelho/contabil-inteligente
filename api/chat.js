@@ -1,7 +1,23 @@
 /**
- * CONTÁBIL INTELIGENTE — API Handler com Streaming
+ * CONTÁBIL INTELIGENTE — API Handler com Streaming + Arquitetura Híbrida
  * Arquivo: api/chat.js
+ *
+ * Fluxo:
+ *  1. IA extrai dados estruturados em JSON
+ *  2. api/regras.js faz os cálculos (nunca a IA)
+ *  3. Resultado injetado na resposta final via streaming
  */
+
+import {
+  calcularExtrato,
+  calcularRetencoes,
+  validarJsonExtrato,
+  formatarMoeda,
+} from './regras.js';
+
+// ─────────────────────────────────────────────
+// RATE LIMITING
+// ─────────────────────────────────────────────
 
 const rateLimitMap = new Map();
 const LIMITE_POR_MINUTO = 15;
@@ -20,6 +36,84 @@ function verificarRateLimit(ip) {
   }
   return registro.count <= LIMITE_POR_MINUTO;
 }
+
+// ─────────────────────────────────────────────
+// SYSTEM PROMPT — MODO EXTRAÇÃO JSON
+// Usado quando há documento (extrato, NF, laudo)
+// ─────────────────────────────────────────────
+
+const SYSTEM_PROMPT_JSON = `Voce e o motor de extracao estruturada do Contabil Inteligente.
+
+Quando o usuario enviar um documento (extrato bancario, NF-e, NFS-e, CT-e, laudo de solo ou boleto), 
+voce deve retornar APENAS um objeto JSON valido, sem texto antes ou depois, sem markdown, sem backticks.
+
+=== FORMATO PARA EXTRATO BANCARIO ===
+{
+  "tipo_documento": "extrato_bancario",
+  "banco": "nome do banco",
+  "titular": "nome ou razao social",
+  "periodo": "MM/AAAA ou data inicial - data final",
+  "regime": "mei | simples | presumido | real | desconhecido",
+  "cnpj_cpf": "numero se identificavel ou null",
+  "transacoes": [
+    {
+      "data": "DD/MM/AAAA",
+      "descricao": "descricao original da linha",
+      "valor": 1500.00,
+      "tipo": "entrada | saida | saldo"
+    }
+  ]
+}
+
+=== FORMATO PARA NFS-e / NF-e ===
+{
+  "tipo_documento": "nfse",
+  "numero": "numero da nota",
+  "emissor": "nome ou razao social",
+  "cnpj_emissor": "00.000.000/0001-00 ou null",
+  "tomador": "nome do tomador ou null",
+  "cnpj_tomador": "00.000.000/0001-00 ou null",
+  "regime": "mei | simples | presumido | real | desconhecido",
+  "valor_bruto": 5000.00,
+  "descricao_servico": "descricao",
+  "competencia": "MM/AAAA",
+  "retencoes_informadas": {
+    "irrf": 0,
+    "iss": 0,
+    "pis": 0,
+    "cofins": 0,
+    "csll": 0
+  }
+}
+
+=== FORMATO PARA LAUDO DE SOLO ===
+{
+  "tipo_documento": "laudo_solo",
+  "laboratorio": "nome ou null",
+  "data_coleta": "DD/MM/AAAA ou null",
+  "cultura_alvo": "soja | milho | algodao | pastagem | outro | null",
+  "parametros": [
+    {
+      "nome": "pH",
+      "valor": 5.8,
+      "unidade": "CaCl2",
+      "tipo": "entrada"
+    }
+  ]
+}
+
+=== REGRAS OBRIGATORIAS DE EXTRACAO ===
+1. Extraia TODAS as linhas do extrato — nenhuma pode ser omitida
+2. Saldo inicial, saldo final, saldo do dia: tipo = "saldo" (nunca "entrada" ou "saida")
+3. MEI: se identificado, regime = "mei"
+4. Se o regime nao for identificavel, regime = "desconhecido"
+5. Valores negativos mantidos como negativos no campo valor
+6. Retorne SOMENTE o JSON — sem explicacoes, sem markdown`;
+
+// ─────────────────────────────────────────────
+// SYSTEM PROMPT — MODO CONSULTORIA
+// Usado para perguntas sem documento
+// ─────────────────────────────────────────────
 
 const SYSTEM_PROMPT_BASE = `Voce e o Copiloto Empresarial da Contabil Inteligente, especialista em Contabilidade, Gestao Financeira, Fiscalidade Brasileira e Agronomia, com foco no mercado de Mato Grosso.
 
@@ -41,31 +135,38 @@ PLANO PLUS (R$ 379/mes) — PJ, Fiscal, Financeiro e Contabil:
 - Gera relatorio mensal automatico de economia identificada
 - Atende todos os setores: agronegocio, comercio, servicos
 
-=== PROTOCOLO OBRIGATORIO DE EXTRACAO DE DOCUMENTOS ===
+=== QUANDO RECEBER RESULTADOS DE CALCULO ===
 
-Execute SEMPRE estas 4 etapas antes de qualquer calculo:
+O backend ja calculou os totais com precisao. Voce vai receber um bloco como:
+
+[RESULTADO_CALCULO]
+{ ...json com totais calculados... }
+[/RESULTADO_CALCULO]
+
+Ao receber esse bloco:
+1. NAO refaca os calculos — use os valores exatos do JSON
+2. Apresente os resultados em tabela formatada
+3. Adicione analise, alertas fiscais e recomendacoes
+4. Siga o protocolo de 4 etapas na narrativa (identificacao, inventario, classificacao, resultado)
+
+=== PROTOCOLO OBRIGATORIO DE ANALISE ===
 
 ETAPA 1 - IDENTIFICACAO DO DOCUMENTO
-- Tipo: extrato bancario / NF-e / NFS-e / CT-e / laudo de solo / boleto / outro
-- Emissor/banco, periodo, titular (PF ou PJ, MEI ou nao)
-- Regime tributario se identificavel
+- Tipo, banco/emissor, periodo, titular (PF ou PJ, MEI ou nao), regime tributario
 
 ETAPA 2 - INVENTARIO COMPLETO
-- Liste TODAS as transacoes ou campos do documento
-- Para extratos: cada linha com data, descricao, valor
-- Para laudos de solo: todos os parametros e indices
-- Para PDFs extensos: processe todas as paginas
-- Declare: "Encontrei X itens no documento"
+- Confirme a quantidade total de transacoes processadas
+- Para PDFs extensos: confirme que todas as paginas foram processadas
 
 ETAPA 3 - CLASSIFICACAO
 Para EXTRATOS:
-- ENTRADA REAL: PIX recebido, TED recebida, deposito, credito de servico
-- SAIDA REAL: PIX enviado, TED enviada, pagamento, debito, saque, tarifa
-- IGNORAR: saldo inicial, saldo final, saldo do dia, limite disponivel
+- ENTRADA REAL: PIX recebido, TED, deposito, credito de servico
+- SAIDA REAL: PIX enviado, pagamento, debito, saque, tarifa
+- IGNORADO (saldo): saldo inicial, saldo final, saldo do dia, limite disponivel
 - MEI com conta PF: separar receitas MEI de entradas pessoais
 
 Para NF-e / NFS-e (PLUS):
-- Extrair: numero, CNPJ, valores, impostos, retencoes, valor liquido
+- Extrair numero, CNPJ, valores, impostos, retencoes, valor liquido
 - Nao confundir valor bruto com liquido
 
 Para LAUDOS DE SOLO:
@@ -73,14 +174,14 @@ Para LAUDOS DE SOLO:
 - Comparar com faixas de referencia (ideal, baixo, alto)
 - Identificar deficiencias e excessos
 
-ETAPA 4 - CALCULOS VERIFICADOS
-- Some apenas ENTRADAS REAIS e SAIDAS REAIS
-- Saldo sempre separado (nunca como receita ou despesa)
-- Entradas - Saidas = Resultado do periodo
+ETAPA 4 - RESULTADOS E RECOMENDACOES
+- Use os valores calculados pelo backend
+- Apresente em tabela
+- Adicione alertas e proximos passos
 
 === SUPORTE AO TECNICO AGRICOLA ===
 
-Quando o usuario for tecnico agricola ou enviar laudo de solo, atue como consultor agronômico:
+Quando o usuario for tecnico agricola ou enviar laudo de solo, atue como consultor agronomico:
 
 ANALISE DE LAUDO DE SOLO:
 1. Identifique a cultura alvo (soja, milho, algodao, pastagem, etc)
@@ -98,27 +199,6 @@ ANALISE DE LAUDO DE SOLO:
    - Micronutrientes deficientes: produto e dose
 5. Estimativa de custo da correcao por hectare
 6. Comparacao com medias de MT (fonte: EMBRAPA/IMEA)
-
-DUVIDAS DO TECNICO AGRICOLA:
-- Interpretacao de laudos e indices de solo
-- Recomendacao de corretivos (calcario, gesso, micronutrientes)
-- Doses de NPK por cultura e produtividade esperada
-- Manejo de pH e saturacao de bases (V%)
-- Calculo de CTC e capacidade de retencao de nutrientes
-- Interpretacao de laudos de agua para irrigacao
-- Manejo de pastagens degradadas
-- Rotacao de culturas para MT
-- Pragas e doencas comuns em MT (identificacao e manejo)
-- Boas praticas agricolas (BPA) e rastreabilidade
-- Custo de producao por cultura em MT (referencias IMEA)
-- Legislacao ambiental: APP, reserva legal, CAR
-
-ALERTAS AGRONOMICOS:
-- pH abaixo de 5.5: necessidade urgente de calagem
-- V% abaixo de 50%: solo acido, correcao necessaria
-- P muito baixo: risco de queda de produtividade
-- K baixo: risco de acamamento e reducao de graos
-- Relacao Ca/Mg fora da faixa: desequilibrio nutricional
 
 === DIAGNOSTICOS (PLANO PLUS) ===
 
@@ -146,6 +226,199 @@ TOM: Tecnico mas acessivel. Direto. Educativo.
 
 FONTES: EMBRAPA, IMEA, MAPA, SENAR, CREA-MT, legislacao federal, RICMS-MT, ISS Cuiaba, LC 123/06, CGSN 140/2018.`;
 
+// ─────────────────────────────────────────────
+// DETECÇÃO DE DOCUMENTO NA MENSAGEM
+// ─────────────────────────────────────────────
+
+/**
+ * Verifica se a última mensagem do usuário contém um documento (imagem/PDF)
+ */
+function contemDocumento(messages) {
+  const ultimaMensagem = [...messages].reverse().find(m => m.role === 'user');
+  if (!ultimaMensagem || !Array.isArray(ultimaMensagem.content)) return false;
+  return ultimaMensagem.content.some(c => c.type === 'image' || c.type === 'document');
+}
+
+// ─────────────────────────────────────────────
+// EXTRAÇÃO JSON VIA IA (FASE 1)
+// ─────────────────────────────────────────────
+
+/**
+ * Chama a IA no modo extração — retorna JSON estruturado
+ */
+async function extrairJSON(messages, apiKey) {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'prompt-caching-2024-07-31'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      system: [
+        {
+          type: 'text',
+          text: SYSTEM_PROMPT_JSON,
+          cache_control: { type: 'ephemeral' }
+        }
+      ],
+      messages
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error?.message || 'Erro na extração JSON');
+  }
+
+  const data = await response.json();
+  const texto = data.content?.find(c => c.type === 'text')?.text || '';
+
+  // Remove possíveis backticks residuais
+  const limpo = texto.replace(/```json|```/gi, '').trim();
+
+  try {
+    return JSON.parse(limpo);
+  } catch {
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────
+// CÁLCULO NO BACKEND (FASE 2)
+// ─────────────────────────────────────────────
+
+/**
+ * Aplica os guardrails e calcula os resultados a partir do JSON extraído
+ */
+function processarJSON(json) {
+  if (!json || !json.tipo_documento) return null;
+
+  switch (json.tipo_documento) {
+    case 'extrato_bancario': {
+      const validacao = validarJsonExtrato(json);
+      if (!validacao.valido) return { erro: validacao.erros.join('; ') };
+      const resultado = calcularExtrato(json.transacoes, json.regime);
+      return { tipo: 'extrato_bancario', meta: json, ...resultado };
+    }
+
+    case 'nfse':
+    case 'nfe': {
+      const retencoes = calcularRetencoes({
+        valorBruto: json.valor_bruto,
+        regime: json.regime,
+        tipoServico: json.descricao_servico
+      });
+      return { tipo: json.tipo_documento, meta: json, ...retencoes };
+    }
+
+    case 'laudo_solo': {
+      // Laudos de solo: sem cálculo financeiro — retorna dados estruturados
+      return { tipo: 'laudo_solo', meta: json, parametros: json.parametros };
+    }
+
+    default:
+      return null;
+  }
+}
+
+// ─────────────────────────────────────────────
+// RESPOSTA FINAL VIA STREAMING (FASE 3)
+// ─────────────────────────────────────────────
+
+/**
+ * Chama a IA no modo consultoria com os resultados calculados
+ */
+async function responderComResultados(messages, resultadoCalculo, contextoMemoria, apiKey) {
+  // Injeta resultado do backend na última mensagem do usuário
+  const mensagensComResultado = [...messages];
+  const ultimoIdx = [...mensagensComResultado].map(m => m.role).lastIndexOf('user');
+
+  if (ultimoIdx >= 0 && resultadoCalculo) {
+    const ultima = mensagensComResultado[ultimoIdx];
+    const injecao = `\n\n[RESULTADO_CALCULO]\n${JSON.stringify(resultadoCalculo, null, 2)}\n[/RESULTADO_CALCULO]`;
+
+    if (typeof ultima.content === 'string') {
+      mensagensComResultado[ultimoIdx] = { ...ultima, content: ultima.content + injecao };
+    } else if (Array.isArray(ultima.content)) {
+      const novosItens = [...ultima.content];
+      const idxTexto = novosItens.findLastIndex(c => c.type === 'text');
+      if (idxTexto >= 0) {
+        novosItens[idxTexto] = { ...novosItens[idxTexto], text: novosItens[idxTexto].text + injecao };
+      } else {
+        novosItens.push({ type: 'text', text: injecao });
+      }
+      mensagensComResultado[ultimoIdx] = { ...ultima, content: novosItens };
+    }
+  }
+
+  const systemPrompt = contextoMemoria && contextoMemoria.trim().length > 0
+    ? SYSTEM_PROMPT_BASE + '\n' + contextoMemoria
+    : SYSTEM_PROMPT_BASE;
+
+  return fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'prompt-caching-2024-07-31'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      stream: true,
+      system: [
+        {
+          type: 'text',
+          text: systemPrompt,
+          cache_control: { type: 'ephemeral' }
+        }
+      ],
+      messages: mensagensComResultado
+    })
+  });
+}
+
+// ─────────────────────────────────────────────
+// NORMALIZAÇÃO DE MENSAGENS (mantida do original)
+// ─────────────────────────────────────────────
+
+function normalizarMensagens(messages) {
+  const normalizadas = messages.map(msg => {
+    if (typeof msg.content === 'string') return msg;
+    if (Array.isArray(msg.content)) {
+      const hasMedia = msg.content.some(c => c.type === 'image' || c.type === 'document');
+      if (!hasMedia) {
+        const textParts = msg.content.filter(c => c.type === 'text').map(c => c.text).join('\n');
+        return { role: msg.role, content: textParts };
+      }
+    }
+    return msg;
+  });
+
+  const deduplicadas = [];
+  for (const msg of normalizadas) {
+    if (deduplicadas.length === 0 || deduplicadas[deduplicadas.length - 1].role !== msg.role) {
+      deduplicadas.push(msg);
+    } else {
+      const last = deduplicadas[deduplicadas.length - 1];
+      if (typeof last.content === 'string' && typeof msg.content === 'string') {
+        last.content = last.content + '\n' + msg.content;
+      }
+    }
+  }
+
+  return deduplicadas;
+}
+
+// ─────────────────────────────────────────────
+// HANDLER PRINCIPAL
+// ─────────────────────────────────────────────
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -169,63 +442,47 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Conversa muito longa. Inicie uma nova sessao.' });
   }
 
-  const systemPrompt = contextoMemoria && contextoMemoria.trim().length > 0
-    ? SYSTEM_PROMPT_BASE + '\n' + contextoMemoria
-    : SYSTEM_PROMPT_BASE;
+  messages = normalizarMensagens(messages);
 
-  messages = messages.map(msg => {
-    if (typeof msg.content === 'string') return msg;
-    if (Array.isArray(msg.content)) {
-      const hasMedia = msg.content.some(c => c.type === 'image' || c.type === 'document');
-      if (!hasMedia) {
-        const textParts = msg.content.filter(c => c.type === 'text').map(c => c.text).join('\n');
-        return { role: msg.role, content: textParts };
-      }
-    }
-    return msg;
-  });
-
-  const normalized = [];
-  for (const msg of messages) {
-    if (normalized.length === 0 || normalized[normalized.length - 1].role !== msg.role) {
-      normalized.push(msg);
-    } else {
-      const last = normalized[normalized.length - 1];
-      if (typeof last.content === 'string' && typeof msg.content === 'string') {
-        last.content = last.content + '\n' + msg.content;
-      }
-    }
-  }
-
-  if (normalized.length === 0 || normalized[0].role !== 'user') {
+  if (messages.length === 0 || messages[0].role !== 'user') {
     return res.status(400).json({ error: 'Mensagem invalida.' });
   }
 
+  const apiKey = process.env.ANTHROPIC_KEY;
+
   try {
-    const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        stream: true,
-        system: systemPrompt,
-        messages: normalized
-      })
-    });
+    let resultadoCalculo = null;
+
+    // FASE 1 + 2: se há documento, extrair JSON e calcular no backend
+    if (contemDocumento(messages)) {
+      const jsonExtraido = await extrairJSON(messages, apiKey);
+      if (jsonExtraido) {
+        resultadoCalculo = processarJSON(jsonExtraido);
+      }
+    }
+
+    // FASE 3: resposta final com streaming
+    const anthropicResponse = await responderComResultados(
+      messages,
+      resultadoCalculo,
+      contextoMemoria,
+      apiKey
+    );
 
     if (!anthropicResponse.ok) {
       const err = await anthropicResponse.json();
       return res.status(400).json({ error: err.error?.message || 'Erro na API.' });
     }
 
+    // Streaming SSE
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+
+    // Se houve cálculo, envia metadado antes do streaming de texto
+    if (resultadoCalculo && !resultadoCalculo.erro) {
+      res.write(`data: ${JSON.stringify({ tipo: 'resultado_calculo', dados: resultadoCalculo })}\n\n`);
+    }
 
     const reader = anthropicResponse.body.getReader();
     const decoder = new TextDecoder();
