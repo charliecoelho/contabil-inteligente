@@ -206,6 +206,54 @@
       return wrap;
     }
 
+    // ── CARD DE CNPJ (arquitetura híbrida) ──
+    function renderCardCNPJ(dados) {
+      if (!dados || !dados.cnpj_formatado) return null;
+
+      const situacaoOk = (dados.situacao || '').toUpperCase() === 'ATIVA';
+      const corSituacao = situacaoOk ? 'cnpj-ativo' : 'cnpj-inativo';
+      const icone = situacaoOk ? '✓' : '⚠';
+
+      const regimeLabel = {
+        mei: 'MEI',
+        simples: 'Simples Nacional',
+        presumido: 'Lucro Presumido',
+        real: 'Lucro Real',
+        desconhecido: 'Não identificado'
+      }[dados.regime_inferido] || 'Não identificado';
+
+      const nome = dados.nome_fantasia || dados.razao_social || '—';
+      const local = dados.municipio && dados.uf ? `${dados.municipio} — ${dados.uf}` : '';
+
+      const html = `
+        <div class="card-cnpj">
+          <div class="card-cnpj-header">
+            <span class="card-cnpj-badge">🏢 Empresa identificada automaticamente</span>
+            <span class="card-cnpj-cnpj">${dados.cnpj_formatado}</span>
+          </div>
+          <div class="card-cnpj-body">
+            <div class="card-cnpj-nome">${nome}</div>
+            ${dados.razao_social && dados.nome_fantasia ? `<div class="card-cnpj-razao">${dados.razao_social}</div>` : ''}
+            <div class="card-cnpj-meta">
+              <span class="card-cnpj-tag ${corSituacao}">${icone} ${dados.situacao || 'Desconhecida'}</span>
+              <span class="card-cnpj-tag cnpj-regime">📋 ${regimeLabel}</span>
+              ${dados.porte ? `<span class="card-cnpj-tag cnpj-porte">⚡ ${dados.porte}</span>` : ''}
+            </div>
+            ${local ? `<div class="card-cnpj-local">📍 ${local}</div>` : ''}
+            ${dados.atividade_principal ? `<div class="card-cnpj-ativ">Atividade: ${dados.atividade_principal}</div>` : ''}
+            ${!situacaoOk ? `<div class="card-cnpj-alerta">⚠️ CNPJ com situação irregular — verifique pendências na Receita Federal.</div>` : ''}
+          </div>
+        </div>`;
+
+      const chat = document.getElementById('chat-msgs');
+      const wrap = document.createElement('div');
+      wrap.className = 'msg msg-assistant';
+      wrap.innerHTML = `<div class="msg-avatar">CI</div><div class="msg-bubble msg-bubble-card">${html}</div>`;
+      chat.appendChild(wrap);
+      chat.scrollTop = chat.scrollHeight;
+      return wrap;
+    }
+
     window.APP.ultimoConteudo = [];
 
     window.enviar = async () => {
@@ -324,9 +372,12 @@
               if (data === '[DONE]') { onDone(); return; }
               try {
                 const parsed = JSON.parse(data);
-                // Novo: evento de resultado calculado pelo backend
+                // Evento: resultado calculado pelo backend
                 if (parsed.tipo === 'resultado_calculo') {
                   onResultadoCalculo(parsed.dados);
+                // Evento: dados de CNPJ consultado
+                } else if (parsed.tipo === 'dados_cnpj') {
+                  renderCardCNPJ(parsed.dados);
                 } else if (parsed.text) {
                   onChunk(parsed.text);
                 }
@@ -976,6 +1027,24 @@
       border-top: 1px solid #E8D066;
       line-height: 1.5;
     }
+
+    /* ── CARD DE CNPJ ── */
+    .card-cnpj { font-size: 0.85rem; }
+    .card-cnpj-header { background: #1D3557; padding: 11px 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .card-cnpj-badge { font-size: 0.75rem; font-weight: 600; color: rgba(255,255,255,0.9); }
+    .card-cnpj-cnpj { font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: rgba(255,255,255,0.5); }
+    .card-cnpj-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+    .card-cnpj-nome { font-size: 0.95rem; font-weight: 600; color: var(--ink); line-height: 1.3; }
+    .card-cnpj-razao { font-size: 0.75rem; color: var(--ink-3); }
+    .card-cnpj-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+    .card-cnpj-tag { font-size: 0.7rem; font-weight: 600; padding: 3px 9px; border-radius: 20px; letter-spacing: 0.02em; }
+    .cnpj-ativo   { background: var(--green-l); color: var(--green); }
+    .cnpj-inativo { background: var(--red-l); color: var(--red); }
+    .cnpj-regime  { background: var(--blue-l); color: var(--blue); }
+    .cnpj-porte   { background: var(--gold-l); color: var(--gold); }
+    .card-cnpj-local { font-size: 0.75rem; color: var(--ink-3); }
+    .card-cnpj-ativ  { font-size: 0.75rem; color: var(--ink-3); }
+    .card-cnpj-alerta { font-size: 0.76rem; color: var(--red); background: var(--red-l); border-radius: 4px; padding: 8px 10px; line-height: 1.4; }
 
     .typing-bubble { display: flex; gap: 5px; align-items: center; padding: 14px 18px; min-width: 60px; }
     .typing-bubble span { width: 7px; height: 7px; background: var(--ink-3); border-radius: 50%; animation: bounce 1.2s infinite; }
