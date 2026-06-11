@@ -17,6 +17,7 @@ import {
   verificarGatilhoUpsell,
   calcularTaxaSucesso,
   percentualTaxaSucesso,
+  normalizar,
 } from './regras.js';
 
 // ─────────────────────────────────────────────
@@ -131,73 +132,53 @@ async function consultarCNPJ(cnpj) {
 // SYSTEM PROMPT — MODO EXTRAÇÃO JSON
 // ─────────────────────────────────────────────
 
-const SYSTEM_PROMPT_JSON = `Voce e o motor de extracao estruturada do Contabil Inteligente.
+const SYSTEM_PROMPT_JSON = `Voce e um extrator multimodal de dados fiscais e financeiros para o mercado brasileiro. Sua unica funcao e analisar visualmente os documentos enviados (PDFs/Imagens) e retornar estritamente um objeto JSON estruturado.
 
-Quando o usuario enviar um documento (extrato bancario, NF-e, NFS-e, CT-e, laudo de solo ou boleto),
-voce deve retornar APENAS um objeto JSON valido, sem texto antes ou depois, sem markdown, sem backticks.
+=== DIRETRIZES TECNICAS OBRIGATORIAS ===
+- Saida: Responda APENAS com o objeto JSON. Nao inclua textos introdutorios, explicacoes ou blocos de codigo markdown.
+- Extracao Fiel: Capture os valores numericos exatamente como aparecem no documento. Transforme strings monetarias em numeros decimais puros (Float). Nao tente somar ou calcular saldos.
+- Extraia TODAS as linhas/transacoes do documento — nenhuma pode ser omitida.
 
-=== FORMATO PARA EXTRATO BANCARIO ===
+=== SCHEMA JSON REQUERIDO ===
 {
-  "tipo_documento": "extrato_bancario",
-  "banco": "nome do banco",
-  "titular": "nome ou razao social",
-  "periodo": "MM/AAAA ou data inicial - data final",
-  "regime": "mei | simples | presumido | real | desconhecido",
-  "cnpj_cpf": "numero se identificavel ou null",
+  "tipo_documento": "extrato_bancario | nfe | nfse | cte | laudo_solo | boleto | outro",
+  "banco": "Nubank | Inter | Bradesco | BB | Itau | outro_banco | null",
+  "periodo": {
+    "data_inicio": "AAAA-MM-DD ou null",
+    "data_fim": "AAAA-MM-DD ou null"
+  },
+  "empresa_identificada": {
+    "cnpj": "string ou null",
+    "razao_social": "string ou null",
+    "regime_tributario_identificado": "MEI | Simples Nacional | Lucro Presumido | Lucro Real | null"
+  },
+  "alertas_fiscais_preliminares": [
+    {
+      "nivel": "ALTO | MEDIO | BAIXO",
+      "mensagem": "descricao da anomalia identificada"
+    }
+  ],
   "transacoes": [
     {
-      "data": "DD/MM/AAAA",
-      "descricao": "descricao original da linha",
+      "id": 1,
+      "data": "AAAA-MM-DD",
+      "descricao": "texto bruto da transacao ou item",
       "valor": 1500.00,
-      "tipo": "entrada | saida | saldo"
+      "categoria": "entrada_real | saida_real | informativo"
     }
-  ]
+  ],
+  "economia_fiscal_identificada": 0.00
 }
 
-=== FORMATO PARA NFS-e / NF-e ===
-{
-  "tipo_documento": "nfse",
-  "numero": "numero da nota",
-  "emissor": "nome ou razao social",
-  "cnpj_emissor": "00.000.000/0001-00 ou null",
-  "tomador": "nome do tomador ou null",
-  "cnpj_tomador": "00.000.000/0001-00 ou null",
-  "regime": "mei | simples | presumido | real | desconhecido",
-  "valor_bruto": 5000.00,
-  "descricao_servico": "descricao",
-  "competencia": "MM/AAAA",
-  "retencoes_informadas": {
-    "irrf": 0,
-    "iss": 0,
-    "pis": 0,
-    "cofins": 0,
-    "csll": 0
-  }
-}
+=== REGRAS DE CATEGORIZACAO DAS TRANSACOES ===
+- entrada_real: PIX recebido, TED recebida, deposito, credito de servico, receita, venda
+- saida_real: PIX enviado, TED enviada, pagamento, debito, saque, tarifa, taxa, compra
+- informativo: saldo inicial, saldo final, saldo do dia, limite disponivel, limite de credito (NUNCA somar)
 
-=== FORMATO PARA LAUDO DE SOLO ===
-{
-  "tipo_documento": "laudo_solo",
-  "laboratorio": "nome ou null",
-  "data_coleta": "DD/MM/AAAA ou null",
-  "cultura_alvo": "soja | milho | algodao | pastagem | outro | null",
-  "parametros": [
-    {
-      "nome": "pH",
-      "valor": 5.8,
-      "unidade": "CaCl2",
-      "tipo": "entrada"
-    }
-  ]
-}
-
-=== REGRAS OBRIGATORIAS DE EXTRACAO ===
-1. Extraia TODAS as linhas do extrato — nenhuma pode ser omitida
-2. Saldo inicial, saldo final, saldo do dia: tipo = "saldo" (nunca "entrada" ou "saida")
-3. MEI: se identificado, regime = "mei"
-4. Se o regime nao for identificavel, regime = "desconhecido"
-5. Valores negativos mantidos como negativos no campo valor
-6. Retorne SOMENTE o JSON — sem explicacoes, sem markdown`;
+=== REGRAS ESPECIAIS ===
+- MEI: nunca classificar retencao de ISS como saida_real sobre o proprio MEI
+- Valores negativos: manter como negativos no campo valor
+- economia_fiscal_identificada: preencher com o valor em R$ de creditos tributarios ou economia identificada. Se nao houver, retornar 0.00`;
 
 // ─────────────────────────────────────────────
 // SYSTEM PROMPT — MODO CONSULTORIA
@@ -369,40 +350,97 @@ async function extrairJSON(messages, apiKey) {
 function processarJSON(json, planoAtual = 'basico') {
   if (!json || !json.tipo_documento) return null;
 
+  // ── Normaliza novo schema → schema interno do regras.js ──
+  // Novo: categoria = 'entrada_real' | 'saida_real' | 'informativo'
+  // Interno: tipo = 'entrada' | 'saida' | 'saldo'
+  const mapCategoria = (cat) => {
+    if (cat === 'entrada_real') return 'entrada';
+    if (cat === 'saida_real')   return 'saida';
+    return 'saldo'; // informativo nunca entra nos cálculos
+  };
+
+  // Extrai campos compatíveis com ambos os schemas
+  const cnpj = json.empresa_identificada?.cnpj || json.cnpj_cpf || json.cnpj_emissor || null;
+  const regimeRaw = json.empresa_identificada?.regime_tributario_identificado || json.regime || 'desconhecido';
+  const regime = normalizar(regimeRaw || '')
+    .replace('simples nacional', 'simples')
+    .replace('lucro presumido', 'presumido')
+    .replace('lucro real', 'real')
+    || 'desconhecido';
+
+  // Alertas fiscais do novo schema
+  const alertasFiscais = json.alertas_fiscais_preliminares || json.alertas_fiscais || [];
+
+  const economia = parseFloat(json.economia_fiscal_identificada) || 0;
+
   switch (json.tipo_documento) {
+
     case 'extrato_bancario': {
-      const validacao = validarJsonExtrato(json);
+      // Normaliza transações para o schema do regras.js
+      const transacoesNormalizadas = (json.transacoes || []).map((t, i) => ({
+        ...t,
+        id: t.id || i + 1,
+        tipo: t.tipo || mapCategoria(t.categoria),
+      }));
+
+      const jsonNormalizado = {
+        ...json,
+        cnpj_cpf: cnpj,
+        regime,
+        alertas_fiscais: alertasFiscais,
+        transacoes: transacoesNormalizadas,
+      };
+
+      const validacao = validarJsonExtrato(jsonNormalizado);
       if (!validacao.valido) return { erro: validacao.erros.join('; ') };
-      const resultado = calcularExtrato(json.transacoes, json.regime);
-      const economia = parseFloat(json.economia_fiscal_identificada) || 0;
+
+      const resultado = calcularExtrato(transacoesNormalizadas, regime);
       const upsell = verificarGatilhoUpsell(resultado, planoAtual, economia);
+
       return {
-        tipo: 'extrato_bancario', meta: json, ...resultado,
+        tipo: 'extrato_bancario',
+        meta: jsonNormalizado,
+        ...resultado,
         economiaIdentificada: economia,
         taxaSucesso: calcularTaxaSucesso(economia),
         percentualTaxa: percentualTaxaSucesso(economia),
         upsell,
       };
     }
+
+    case 'nfe':
     case 'nfse':
-    case 'nfe': {
+    case 'cte': {
+      const valorBruto = json.valor_bruto ||
+        (json.transacoes || []).reduce((s, t) => s + Math.abs(parseFloat(t.valor) || 0), 0);
+
       const retencoes = calcularRetencoes({
-        valorBruto: json.valor_bruto,
-        regime: json.regime,
-        tipoServico: json.descricao_servico
+        valorBruto,
+        regime,
+        tipoServico: json.descricao_servico || json.tipo_documento,
       });
-      const economia = parseFloat(json.economia_fiscal_identificada) || 0;
+
+      const upsell = verificarGatilhoUpsell(null, planoAtual, economia);
+
       return {
-        tipo: json.tipo_documento, meta: json, ...retencoes,
+        tipo: json.tipo_documento,
+        meta: { ...json, cnpj_emissor: cnpj, regime, alertas_fiscais: alertasFiscais },
+        ...retencoes,
         economiaIdentificada: economia,
         taxaSucesso: calcularTaxaSucesso(economia),
         percentualTaxa: percentualTaxaSucesso(economia),
-        upsell: verificarGatilhoUpsell(null, planoAtual, economia),
+        upsell,
       };
     }
+
     case 'laudo_solo': {
-      return { tipo: 'laudo_solo', meta: json, parametros: json.parametros };
+      return {
+        tipo: 'laudo_solo',
+        meta: json,
+        parametros: json.parametros || json.transacoes || [],
+      };
     }
+
     default:
       return null;
   }
