@@ -322,6 +322,107 @@ function formatarMoeda(valor) {
 }
 
 // ─────────────────────────────────────────────
+// TAXA DE SUCESSO REGRESSIVA (blueprint §6)
+// ─────────────────────────────────────────────
+
+/**
+ * Calcula a taxa de sucesso sobre economia fiscal identificada
+ * @param {number} economia — valor em R$
+ * @returns {number} taxa em R$
+ */
+function calcularTaxaSucesso(economia) {
+  if (!economia || economia <= 0) return 0;
+  if (economia <= 5000)   return arredondar(economia * 0.05);
+  if (economia <= 20000)  return arredondar(economia * 0.03);
+  if (economia <= 100000) return arredondar(economia * 0.02);
+  return arredondar(economia * 0.01);
+}
+
+/**
+ * Retorna o percentual da taxa de sucesso para exibição
+ * @param {number} economia
+ * @returns {number} percentual (ex: 5, 3, 2, 1)
+ */
+function percentualTaxaSucesso(economia) {
+  if (!economia || economia <= 0) return 0;
+  if (economia <= 5000)   return 5;
+  if (economia <= 20000)  return 3;
+  if (economia <= 100000) return 2;
+  return 1;
+}
+
+// ─────────────────────────────────────────────
+// GATILHO DE UPSELL (backend — nunca no frontend)
+// ─────────────────────────────────────────────
+
+/**
+ * Verifica se o cliente Plus deve receber sugestão de upgrade para Ultra.
+ * Roda no backend — o frontend apenas exibe o resultado.
+ *
+ * Critérios determinísticos (qualquer um dispara o upsell):
+ *  1. Economia fiscal identificada > R$ 10.000
+ *  2. Mais de 50 transações no extrato
+ *  3. Pelo menos 1 alerta fiscal de nível ALTO
+ *  4. Regime presumido ou real com volume financeiro alto (entradas > R$ 50.000)
+ *
+ * @param {object} resultado — retorno de calcularExtrato() ou calcularRetencoes()
+ * @param {string} planoAtual — 'basico' | 'plus' | 'ultra'
+ * @param {number} economiaIdentificada — valor em R$ identificado pela IA
+ * @returns {{ exibir: boolean, motivo: string|null, mensagem: string|null }}
+ */
+function verificarGatilhoUpsell(resultado, planoAtual, economiaIdentificada = 0) {
+  // Upsell só faz sentido para clientes Plus
+  const plano = normalizar(planoAtual || '');
+  if (!plano.includes('plus')) {
+    return { exibir: false, motivo: null, mensagem: null };
+  }
+
+  const economia = parseFloat(economiaIdentificada) || 0;
+  const totalTransacoes = resultado?.transacoesClassificadas?.length || 0;
+  const totalEntradas = resultado?.totalEntradas || 0;
+
+  const temAlertaAlto = Array.isArray(resultado?.alertas) &&
+    resultado.alertas.some(a =>
+      a.includes('⚠️') ||
+      a.toLowerCase().includes('crítico') ||
+      a.toLowerCase().includes('alto')
+    );
+
+  const criterios = {
+    economiaAlta:    economia > 10000,
+    volumeMassivo:   totalTransacoes > 50,
+    alertaAlto:      temAlertaAlto,
+    entradasAltas:   totalEntradas > 50000,
+  };
+
+  const disparou = Object.values(criterios).some(Boolean);
+
+  if (!disparou) return { exibir: false, motivo: null, mensagem: null };
+
+  // Define o motivo principal para personalizar a mensagem
+  let motivo = 'complexidade_fiscal';
+  let detalhe = 'complexidade tributária avançada identificada';
+
+  if (criterios.economiaAlta) {
+    motivo = 'volume_financeiro';
+    detalhe = `economia potencial de ${formatarMoeda(economia)} identificada`;
+  } else if (criterios.volumeMassivo) {
+    motivo = 'volume_transacoes';
+    detalhe = `${totalTransacoes} transações detectadas — volume acima do padrão Plus`;
+  } else if (criterios.entradasAltas) {
+    motivo = 'faturamento_alto';
+    detalhe = `faturamento de ${formatarMoeda(totalEntradas)} no período`;
+  }
+
+  return {
+    exibir: true,
+    motivo,
+    mensagem: `📈 Esta análise identificou ${detalhe}. O Plano Ultra inclui apuração completa de Lucro Presumido avançado e Lucro Real para volumes desta magnitude, com Gerente de Conta dedicado.`,
+    criteriosAtivados: Object.entries(criterios).filter(([, v]) => v).map(([k]) => k),
+  };
+}
+
+// ─────────────────────────────────────────────
 // EXPORTS
 // ─────────────────────────────────────────────
 
@@ -331,6 +432,9 @@ export {
   classificarTransacao,
   validarJsonExtrato,
   aplicarGuardrailMEI,
+  verificarGatilhoUpsell,
+  calcularTaxaSucesso,
+  percentualTaxaSucesso,
   ehSaldo,
   formatarMoeda,
   arredondar,
