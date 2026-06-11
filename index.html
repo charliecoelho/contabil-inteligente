@@ -251,7 +251,10 @@
         const resp = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages })
+          body: JSON.stringify({
+            messages,
+            planoAtual: (window.APP.empresa.plano || 'basico').toLowerCase()
+          })
         });
         if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Erro na API'); }
         const reader = resp.body.getReader();
@@ -286,6 +289,7 @@
       renderAlertas(resultado, cnpj, texto);
       renderGrafico(resultado);
       renderTabela(resultado);
+      renderUpsell(resultado);
       renderEconomia(resultado, texto);
       renderAnaliseTexto(texto);
     }
@@ -410,8 +414,31 @@
         </div>`;
     }
 
-    // Tabela interativa
+    // ── CARD DE UPSELL (backend decide — frontend só exibe) ──
+    function renderUpsell(resultado) {
+      const wrap = document.getElementById('upsell-wrap');
+      if (!wrap) return;
+      const upsell = resultado?.upsell;
+      if (!upsell || !upsell.exibir) { wrap.style.display = 'none'; return; }
+
+      wrap.style.display = 'block';
+      wrap.innerHTML = `
+        <div class="upsell-card">
+          <div class="upsell-icon">🚀</div>
+          <div class="upsell-body">
+            <div class="upsell-titulo">Upgrade de Performance Disponível</div>
+            <div class="upsell-msg">${upsell.mensagem}</div>
+            <div class="upsell-btns">
+              <a href="https://wa.me/556593429981?text=Olá!%20Quero%20migrar%20para%20o%20Plano%20Ultra%20do%20Contábil%20Inteligente" target="_blank" class="upsell-btn-primary">Migrar para o Plano Ultra →</a>
+              <a href="https://wa.me/556593429981?text=Olá!%20Quero%20falar%20com%20um%20Auditor%20Técnico" target="_blank" class="upsell-btn-sec">Falar com Auditor Técnico</a>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // Tabela interativa com teaser para Plus (limite 10 linhas visíveis)
     window._transacoes = [];
+    const LIMITE_LINHAS_PLUS = 10;
 
     function renderTabela(resultado) {
       const wrap = document.getElementById('painel-tabela-wrap');
@@ -426,8 +453,19 @@
 
     function atualizarTabela() {
       const tbody = document.getElementById('tabela-body');
+      const teaserWrap = document.getElementById('tabela-teaser');
       if (!tbody) return;
-      tbody.innerHTML = window._transacoes.map(t => `
+
+      const plano = (window.APP.empresa.plano || '').toLowerCase();
+      const ehPlus = plano.includes('plus');
+      const ehUltra = plano.includes('ultra') || plano.includes('enterprise');
+      const total = window._transacoes.length;
+      // Plus vê 10 linhas; Ultra e demais veem tudo
+      const limite = ehPlus && !ehUltra ? LIMITE_LINHAS_PLUS : total;
+      const visiveis = window._transacoes.slice(0, limite);
+      const ocultas = total - limite;
+
+      tbody.innerHTML = visiveis.map(t => `
         <tr class="${!t.ativo ? 'linha-inativa' : ''} linha-${t.classificacao}">
           <td class="td-data">${t.data || '—'}</td>
           <td class="td-desc">${t.descricao || '—'}</td>
@@ -445,6 +483,17 @@
             </button>
           </td>
         </tr>`).join('');
+
+      // Teaser — mostrar blur + CTA para Plus quando há linhas ocultas
+      if (teaserWrap) {
+        if (ocultas > 0 && ehPlus) {
+          teaserWrap.style.display = 'block';
+          document.getElementById('teaser-count').textContent = ocultas;
+        } else {
+          teaserWrap.style.display = 'none';
+        }
+      }
+
       recalcular();
     }
 
@@ -885,6 +934,29 @@
     .btn-desbloquear:hover { background:#D4A017; transform:translateY(-1px); box-shadow:0 4px 12px rgba(240,180,41,0.3); }
     .economia-taxa { font-size:0.72rem; color:var(--ink-3); text-align:center; }
 
+    /* ── CARD UPSELL ── */
+    .upsell-card { display:flex; align-items:flex-start; gap:14px; background:linear-gradient(135deg,#1E1B4B,#312E81); border:1px solid #4F46E5; border-radius:10px; padding:18px 20px; }
+    .upsell-icon { font-size:1.6rem; flex-shrink:0; }
+    .upsell-body { flex:1; min-width:0; }
+    .upsell-titulo { font-size:0.72rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#A5B4FC; margin-bottom:6px; }
+    .upsell-msg { font-size:0.82rem; color:rgba(255,255,255,0.85); line-height:1.55; margin-bottom:12px; }
+    .upsell-btns { display:flex; gap:8px; flex-wrap:wrap; }
+    .upsell-btn-primary { background:#fff; color:#312E81; font-size:0.78rem; font-weight:700; padding:8px 16px; border-radius:6px; text-decoration:none; transition:all 0.2s; white-space:nowrap; }
+    .upsell-btn-primary:hover { background:#EEF2FF; transform:translateY(-1px); }
+    .upsell-btn-sec { background:rgba(79,70,229,0.3); color:#C7D2FE; font-size:0.78rem; font-weight:500; padding:8px 14px; border-radius:6px; text-decoration:none; border:1px solid rgba(99,102,241,0.4); transition:all 0.2s; white-space:nowrap; }
+    .upsell-btn-sec:hover { background:rgba(79,70,229,0.5); }
+
+    /* ── TEASER DA TABELA ── */
+    .teaser-blur { padding:8px 12px; pointer-events:none; user-select:none; }
+    .teaser-row { height:36px; background:linear-gradient(90deg, var(--bg-2) 25%, var(--rule) 50%, var(--bg-2) 75%); border-radius:4px; margin-bottom:4px; filter:blur(3px); opacity:0.5; }
+    .teaser-row-sm { width:60%; }
+    .teaser-cta { display:flex; align-items:center; gap:14px; padding:14px 16px; background:linear-gradient(135deg,#1E1B4B,#312E81); flex-wrap:wrap; }
+    .teaser-cta-icon { font-size:1.3rem; flex-shrink:0; }
+    .teaser-cta-texto { flex:1; font-size:0.8rem; color:rgba(255,255,255,0.8); line-height:1.5; min-width:180px; }
+    .teaser-cta-texto strong { color:#fff; }
+    .teaser-btn { background:var(--dourado); color:var(--azul); font-size:0.78rem; font-weight:700; padding:9px 18px; border-radius:6px; text-decoration:none; white-space:nowrap; transition:all 0.2s; flex-shrink:0; }
+    .teaser-btn:hover { background:#D4A017; transform:translateY(-1px); }
+
     /* Análise textual */
     .painel-analise { background:var(--branco); border:1px solid var(--rule); border-radius:8px; overflow:hidden; margin-bottom:16px; }
     .analise-body { padding:18px; font-size:0.84rem; line-height:1.78; color:var(--ink-2); }
@@ -1120,6 +1192,9 @@
           </div>
         </div>
 
+        <!-- Upsell Ultra (renderizado pelo backend quando critérios atingidos) -->
+        <div id="upsell-wrap" style="display:none;margin-bottom:16px"></div>
+
         <!-- Tabela interativa -->
         <div class="painel-tabela-full" id="painel-tabela-wrap" style="display:none">
           <div class="painel-card-header" style="padding:11px 15px">📋 Transações — corrija a classificação se necessário</div>
@@ -1133,6 +1208,22 @@
               </thead>
               <tbody id="tabela-body"></tbody>
             </table>
+          </div>
+          <!-- Teaser: linhas ocultas para clientes Plus -->
+          <div id="tabela-teaser" style="display:none">
+            <div class="teaser-blur">
+              <div class="teaser-row"></div>
+              <div class="teaser-row"></div>
+              <div class="teaser-row teaser-row-sm"></div>
+            </div>
+            <div class="teaser-cta">
+              <div class="teaser-cta-icon">🔒</div>
+              <div class="teaser-cta-texto">
+                <strong><span id="teaser-count">0</span> transações adicionais</strong> estão ocultas nesta análise.
+                Faça upgrade para o Plano Ultra para auditar o extrato completo.
+              </div>
+              <a href="https://wa.me/556593429981?text=Olá!%20Quero%20migrar%20para%20o%20Plano%20Ultra" target="_blank" class="teaser-btn">Desbloquear Ultra →</a>
+            </div>
           </div>
           <div class="recap">
             <div class="recap-item"><div class="recap-lbl">Entradas</div><div class="recap-val res-pos" id="recap-entradas">R$ 0,00</div></div>
