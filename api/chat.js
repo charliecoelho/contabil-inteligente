@@ -14,6 +14,9 @@ import {
   calcularRetencoes,
   validarJsonExtrato,
   formatarMoeda,
+  verificarGatilhoUpsell,
+  calcularTaxaSucesso,
+  percentualTaxaSucesso,
 } from './regras.js';
 
 // ─────────────────────────────────────────────
@@ -363,7 +366,7 @@ async function extrairJSON(messages, apiKey) {
 // CÁLCULO NO BACKEND (FASE 2)
 // ─────────────────────────────────────────────
 
-function processarJSON(json) {
+function processarJSON(json, planoAtual = 'basico') {
   if (!json || !json.tipo_documento) return null;
 
   switch (json.tipo_documento) {
@@ -371,7 +374,15 @@ function processarJSON(json) {
       const validacao = validarJsonExtrato(json);
       if (!validacao.valido) return { erro: validacao.erros.join('; ') };
       const resultado = calcularExtrato(json.transacoes, json.regime);
-      return { tipo: 'extrato_bancario', meta: json, ...resultado };
+      const economia = parseFloat(json.economia_fiscal_identificada) || 0;
+      const upsell = verificarGatilhoUpsell(resultado, planoAtual, economia);
+      return {
+        tipo: 'extrato_bancario', meta: json, ...resultado,
+        economiaIdentificada: economia,
+        taxaSucesso: calcularTaxaSucesso(economia),
+        percentualTaxa: percentualTaxaSucesso(economia),
+        upsell,
+      };
     }
     case 'nfse':
     case 'nfe': {
@@ -380,7 +391,14 @@ function processarJSON(json) {
         regime: json.regime,
         tipoServico: json.descricao_servico
       });
-      return { tipo: json.tipo_documento, meta: json, ...retencoes };
+      const economia = parseFloat(json.economia_fiscal_identificada) || 0;
+      return {
+        tipo: json.tipo_documento, meta: json, ...retencoes,
+        economiaIdentificada: economia,
+        taxaSucesso: calcularTaxaSucesso(economia),
+        percentualTaxa: percentualTaxaSucesso(economia),
+        upsell: verificarGatilhoUpsell(null, planoAtual, economia),
+      };
     }
     case 'laudo_solo': {
       return { tipo: 'laudo_solo', meta: json, parametros: json.parametros };
@@ -503,7 +521,7 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: 'Muitas requisicoes. Aguarde 1 minuto.' });
   }
 
-  let { messages, contextoMemoria } = req.body || {};
+  let { messages, contextoMemoria, planoAtual } = req.body || {};
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'Requisicao invalida.' });
@@ -531,7 +549,7 @@ export default async function handler(req, res) {
 
       if (jsonExtraido) {
         // Fase 2a: cálculos pelo backend
-        resultadoCalculo = processarJSON(jsonExtraido);
+        resultadoCalculo = processarJSON(jsonExtraido, planoAtual || 'basico');
 
         // Fase 2b: CNPJ automático — busca em paralelo sem bloquear
         const cnpjBruto =
@@ -553,7 +571,7 @@ export default async function handler(req, res) {
               resultadoCalculo = processarJSON({
                 ...jsonExtraido,
                 regime: dadosCNPJ.regime_inferido
-              });
+              }, planoAtual || 'basico');
             }
           }
         }
