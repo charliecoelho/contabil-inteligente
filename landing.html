@@ -31,721 +31,205 @@
       color: var(--tinta);
       overflow-x: hidden;
       -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
     }
 
     /* ── NAVBAR ── */
     nav {
       position: fixed; top: 0; left: 0; right: 0; z-index: 100;
       display: flex; align-items: center; justify-content: space-between;
-      padding: 0 5%;
-      height: 68px;
+      padding: 0 5%; height: 68px;
       background: rgba(15,37,68,0.96);
       backdrop-filter: blur(12px);
       border-bottom: 1px solid rgba(255,255,255,0.06);
     }
-
-    .nav-logo {
-      display: flex; align-items: center; gap: 10px;
-      text-decoration: none;
-    }
-
-    .logo-icon {
-      width: 36px; height: 36px;
-      background: var(--verde);
-      border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12px; font-weight: 500; letter-spacing: 0.5px;
-      color: #fff;
-      letter-spacing: -0.5px;
-    }
-
-    .logo-text {
-      font-family: 'Fraunces', serif;
-      font-size: 1rem; font-weight: 700;
-      color: #fff;
-    }
-
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo-icon { width: 36px; height: 36px; background: var(--verde); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; color: #fff; letter-spacing: -0.5px; }
+    .logo-text { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 700; color: #fff; }
     .logo-text span { color: var(--dourado); }
-
-    .nav-links {
-      display: flex; align-items: center; gap: 32px;
-      list-style: none;
-    }
-
-    .nav-links a {
-      text-decoration: none;
-      font-size: 0.85rem; font-weight: 500;
-      color: rgba(255,255,255,0.65);
-      transition: color 0.2s;
-    }
+    .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+    .nav-links a { text-decoration: none; font-size: 0.85rem; font-weight: 500; color: rgba(255,255,255,0.65); transition: color 0.2s; }
     .nav-links a:hover { color: #fff; }
-
-    .btn-login {
-      background: rgba(255,255,255,0.1);
-      border: 1px solid rgba(255,255,255,0.2);
-      color: #fff !important;
-      padding: 8px 20px;
-      border-radius: 6px;
-      font-size: 0.85rem !important;
-      font-weight: 600 !important;
-      transition: all 0.2s !important;
-    }
+    .btn-login { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff !important; padding: 8px 20px; border-radius: 6px; font-size: 0.85rem !important; font-weight: 600 !important; transition: all 0.2s !important; }
     .btn-login:hover { background: rgba(255,255,255,0.2) !important; }
-
-    .btn-nav-cta {
-      background: var(--verde);
-      color: #fff;
-      padding: 9px 22px;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      text-decoration: none;
-      transition: all 0.2s;
-      white-space: nowrap;
-    }
+    .btn-nav-cta { background: var(--verde); color: #fff; padding: 9px 22px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; text-decoration: none; transition: all 0.2s; white-space: nowrap; }
     .btn-nav-cta:hover { background: #007A50; transform: translateY(-1px); }
 
     /* ── HERO ── */
-    .hero {
-      min-height: 100vh;
-      background: var(--azul);
-      display: flex; align-items: center;
-      padding: 100px 5% 80px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .hero::before {
-      content: '';
-      position: absolute; inset: 0;
-      background:
-        radial-gradient(ellipse 80% 60% at 70% 50%, rgba(0,135,90,0.12) 0%, transparent 70%),
-        radial-gradient(ellipse 50% 80% at 10% 80%, rgba(240,180,41,0.06) 0%, transparent 60%);
-    }
-
-    .hero-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 60px;
-      align-items: center;
-      max-width: 1200px;
-      margin: 0 auto;
-      width: 100%;
-      position: relative;
-    }
-
-    .hero-badge {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: rgba(0,135,90,0.15);
-      border: 1px solid rgba(0,135,90,0.3);
-      border-radius: 100px;
-      padding: 6px 14px;
-      font-size: 0.75rem; font-weight: 600;
-      color: #4ADE80;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      margin-bottom: 24px;
-    }
-
-    .hero-badge::before {
-      content: '';
-      width: 6px; height: 6px;
-      background: #4ADE80;
-      border-radius: 50%;
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.3; }
-    }
-
-    .hero h1 {
-      font-family: 'Fraunces', serif;
-      font-size: clamp(2.4rem, 4vw, 3.6rem);
-      font-weight: 800;
-      color: #fff;
-      line-height: 1.1;
-      margin-bottom: 20px;
-    }
-
-    .hero h1 em {
-      font-style: normal;
-      color: var(--dourado);
-    }
-
-    .hero p {
-      font-size: 1.05rem;
-      color: rgba(255,255,255,0.65);
-      line-height: 1.7;
-      margin-bottom: 36px;
-      max-width: 480px;
-    }
-
-    .hero-ctas {
-      display: flex; flex-wrap: wrap; gap: 14px;
-      margin-bottom: 48px;
-    }
-
-    .btn-primary {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: var(--verde);
-      color: #fff;
-      padding: 14px 28px;
-      border-radius: 8px;
-      font-size: 0.95rem; font-weight: 600;
-      text-decoration: none;
-      transition: all 0.25s;
-      border: none; cursor: pointer;
-    }
+    .hero { min-height: 100vh; background: var(--azul); display: flex; align-items: center; padding: 100px 5% 80px; position: relative; overflow: hidden; }
+    .hero::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 80% 60% at 70% 50%, rgba(0,135,90,0.12) 0%, transparent 70%), radial-gradient(ellipse 50% 80% at 10% 80%, rgba(240,180,41,0.06) 0%, transparent 60%); }
+    .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; max-width: 1200px; margin: 0 auto; width: 100%; position: relative; }
+    .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(0,135,90,0.15); border: 1px solid rgba(0,135,90,0.3); border-radius: 100px; padding: 6px 14px; font-size: 0.75rem; font-weight: 600; color: #4ADE80; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 24px; }
+    .hero-badge::before { content: ''; width: 6px; height: 6px; background: #4ADE80; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .hero h1 { font-family: 'Fraunces', serif; font-size: clamp(2.4rem, 4vw, 3.6rem); font-weight: 800; color: #fff; line-height: 1.1; margin-bottom: 20px; }
+    .hero h1 em { font-style: normal; color: var(--dourado); }
+    .hero p { font-size: 1.05rem; color: rgba(255,255,255,0.65); line-height: 1.7; margin-bottom: 36px; max-width: 480px; }
+    .hero-ctas { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 48px; }
+    .btn-primary { display: inline-flex; align-items: center; gap: 8px; background: var(--verde); color: #fff; padding: 14px 28px; border-radius: 8px; font-size: 0.95rem; font-weight: 600; text-decoration: none; transition: all 0.25s; border: none; cursor: pointer; }
     .btn-primary:hover { background: #007A50; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,135,90,0.35); }
-
-    .btn-secondary {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: transparent;
-      color: #fff;
-      padding: 14px 28px;
-      border-radius: 8px;
-      font-size: 0.95rem; font-weight: 600;
-      text-decoration: none;
-      border: 1px solid rgba(255,255,255,0.25);
-      transition: all 0.25s;
-    }
+    .btn-secondary { display: inline-flex; align-items: center; gap: 8px; background: transparent; color: #fff; padding: 14px 28px; border-radius: 8px; font-size: 0.95rem; font-weight: 600; text-decoration: none; border: 1px solid rgba(255,255,255,0.25); transition: all 0.25s; }
     .btn-secondary:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.5); }
+    .hero-stats { display: flex; gap: 32px; }
+    .stat-num { font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; font-weight: 500; color: var(--dourado); }
+    .stat-lbl { font-size: 0.75rem; color: rgba(255,255,255,0.45); margin-top: 2px; }
 
-    .hero-stats {
-      display: flex; gap: 32px;
-    }
-
-    .stat { }
-    .stat-num {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 1.6rem; font-weight: 500;
-      color: var(--dourado);
-    }
-    .stat-lbl {
-      font-size: 0.75rem;
-      color: rgba(255,255,255,0.45);
-      margin-top: 2px;
-    }
-
-    /* Hero visual */
-    .hero-visual {
-      display: flex; align-items: center; justify-content: center;
-    }
-
-    .mockup-card {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 16px;
-      padding: 28px;
-      width: 100%;
-      max-width: 420px;
-      backdrop-filter: blur(10px);
-    }
-
-    .mockup-header {
-      display: flex; align-items: center; gap: 10px;
-      margin-bottom: 20px;
-    }
-
+    /* Hero mockup */
+    .hero-visual { display: flex; align-items: center; justify-content: center; }
+    .mockup-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 28px; width: 100%; max-width: 420px; backdrop-filter: blur(10px); }
+    .mockup-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
     .mockup-dots { display: flex; gap: 6px; }
-    .mockup-dots span {
-      width: 10px; height: 10px; border-radius: 50%;
-    }
+    .mockup-dots span { width: 10px; height: 10px; border-radius: 50%; }
     .mockup-dots span:nth-child(1) { background: #FF5F57; }
     .mockup-dots span:nth-child(2) { background: #FFBD2E; }
     .mockup-dots span:nth-child(3) { background: #28C840; }
-
-    .mockup-title {
-      font-size: 0.75rem; font-weight: 500;
-      color: rgba(255,255,255,0.4);
-      font-family: 'JetBrains Mono', monospace;
-    }
-
-    .mockup-msg {
-      border-radius: 10px;
-      padding: 12px 14px;
-      font-size: 0.82rem;
-      line-height: 1.6;
-      margin-bottom: 10px;
-    }
-
-    .mockup-msg.ia {
-      background: rgba(0,135,90,0.15);
-      border: 1px solid rgba(0,135,90,0.25);
-      color: rgba(255,255,255,0.85);
-    }
-
-    .mockup-msg.user {
-      background: rgba(255,255,255,0.08);
-      color: rgba(255,255,255,0.7);
-      margin-left: 20px;
-    }
-
-    .mockup-tag {
-      display: inline-block;
-      font-size: 0.68rem; font-weight: 600;
-      padding: 3px 8px; border-radius: 4px;
-      margin-bottom: 6px;
-      font-family: 'JetBrains Mono', monospace;
-      letter-spacing: 0.05em;
-    }
+    .mockup-title { font-size: 0.75rem; font-weight: 500; color: rgba(255,255,255,0.4); font-family: 'JetBrains Mono', monospace; }
+    .mockup-msg { border-radius: 10px; padding: 12px 14px; font-size: 0.82rem; line-height: 1.6; margin-bottom: 10px; }
+    .mockup-msg.ia { background: rgba(0,135,90,0.15); border: 1px solid rgba(0,135,90,0.25); color: rgba(255,255,255,0.85); }
+    .mockup-msg.user { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); margin-left: 20px; }
+    .mockup-tag { display: inline-block; font-size: 0.68rem; font-weight: 600; padding: 3px 8px; border-radius: 4px; margin-bottom: 6px; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em; }
     .tag-ia { background: rgba(0,135,90,0.25); color: #4ADE80; }
     .tag-user { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); }
-
-    .mockup-results {
-      margin-top: 16px;
-      display: flex; flex-direction: column; gap: 8px;
-    }
-
-    .result-item {
-      display: flex; align-items: center; gap: 10px;
-      background: rgba(255,255,255,0.04);
-      border-radius: 8px;
-      padding: 10px 12px;
-    }
-
+    .mockup-results { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .result-item { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px 12px; }
     .result-icon { font-size: 16px; flex-shrink: 0; }
     .result-text { font-size: 0.78rem; color: rgba(255,255,255,0.7); }
-    .result-val {
-      margin-left: auto;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.78rem;
-      font-weight: 500;
-    }
+    .result-val { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; font-weight: 500; }
     .val-green { color: #4ADE80; }
-    .val-red { color: #F87171; }
     .val-yellow { color: var(--dourado); }
 
-    /* ── DIFERENCIAIS ── */
-    .section {
-      padding: 96px 5%;
-    }
-
-    .section-inner {
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    .section-tag {
-      display: inline-block;
-      font-size: 0.72rem; font-weight: 700;
-      letter-spacing: 0.14em; text-transform: uppercase;
-      color: var(--verde);
-      margin-bottom: 12px;
-    }
-
-    .section-title {
-      font-family: 'Fraunces', serif;
-      font-size: clamp(1.8rem, 3vw, 2.6rem);
-      font-weight: 800;
-      color: var(--azul);
-      line-height: 1.15;
-      margin-bottom: 16px;
-    }
-
-    .section-sub {
-      font-size: 1rem;
-      color: var(--cinza-t);
-      max-width: 560px;
-      line-height: 1.7;
-      margin-bottom: 56px;
-    }
-
-    .diferenciais-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-    }
-
-    .dif-card {
-      background: var(--cinza-l);
-      border-radius: 16px;
-      padding: 32px 28px;
-      transition: all 0.25s;
-      border: 1px solid var(--cinza-m);
-    }
-    .dif-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 16px 48px rgba(15,37,68,0.1);
-      border-color: var(--verde);
-    }
-
-    .dif-icon {
-      width: 48px; height: 48px;
-      background: var(--verde);
-      border-radius: 12px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 22px;
-      margin-bottom: 20px;
-    }
-
-    .dif-title {
-      font-family: 'Fraunces', serif;
-      font-size: 1.05rem; font-weight: 700;
-      color: var(--azul);
-      margin-bottom: 10px;
-    }
-
-    .dif-desc {
-      font-size: 0.88rem;
-      color: var(--cinza-t);
-      line-height: 1.65;
-    }
+    /* ── SEÇÃO GENÉRICA ── */
+    .section { padding: 96px 5%; }
+    .section-inner { max-width: 1200px; margin: 0 auto; }
+    .section-tag { display: inline-block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--verde); margin-bottom: 12px; }
+    .section-title { font-family: 'Fraunces', serif; font-size: clamp(1.8rem, 3vw, 2.6rem); font-weight: 800; color: var(--azul); line-height: 1.15; margin-bottom: 16px; }
+    .section-sub { font-size: 1rem; color: var(--cinza-t); max-width: 560px; line-height: 1.7; margin-bottom: 56px; }
 
     /* ── PLANOS ── */
-    .planos-section {
-      background: var(--azul);
-      padding: 96px 5%;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .planos-section::before {
-      content: '';
-      position: absolute; inset: 0;
-      background: radial-gradient(ellipse 60% 80% at 80% 50%, rgba(0,135,90,0.1) 0%, transparent 70%);
-    }
-
+    .planos-section { background: var(--azul); padding: 96px 5%; position: relative; overflow: hidden; }
+    .planos-section::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 80% at 80% 50%, rgba(0,135,90,0.1) 0%, transparent 70%); }
     .planos-section .section-title { color: #fff; }
     .planos-section .section-sub { color: rgba(255,255,255,0.55); }
     .planos-section .section-tag { color: var(--dourado); }
 
+    /* Grid 3 colunas para os 3 planos */
     .planos-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      max-width: 900px;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+      max-width: 1100px;
       margin: 0 auto;
       position: relative;
     }
 
-    .plano-card {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 20px;
-      padding: 40px 36px;
-      transition: all 0.25s;
-    }
+    .plano-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 36px 28px; transition: all 0.25s; position: relative; }
+    .plano-card.destaque { background: rgba(255,255,255,0.08); border-color: var(--dourado); }
+    .plano-card.ultra { background: rgba(240,180,41,0.06); border-color: rgba(240,180,41,0.3); }
 
-    .plano-card.destaque {
-      background: rgba(255,255,255,0.08);
-      border-color: var(--dourado);
-      position: relative;
-    }
+    .plano-badge-top { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); background: var(--dourado); color: var(--azul); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 16px; border-radius: 100px; white-space: nowrap; }
+    .plano-badge-ultra { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, var(--dourado), #E8A020); color: var(--azul); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 16px; border-radius: 100px; white-space: nowrap; }
 
-    .plano-badge-top {
-      position: absolute;
-      top: -14px; left: 50%; transform: translateX(-50%);
-      background: var(--dourado);
-      color: var(--azul);
-      font-size: 0.7rem; font-weight: 700;
-      letter-spacing: 0.1em; text-transform: uppercase;
-      padding: 5px 16px; border-radius: 100px;
-      white-space: nowrap;
-    }
-
-    .plano-nome {
-      font-family: 'Fraunces', serif;
-      font-size: 1.1rem; font-weight: 700;
-      color: #fff;
-      margin-bottom: 4px;
-    }
-
-    .plano-perfil {
-      font-size: 0.78rem;
-      color: rgba(255,255,255,0.45);
-      margin-bottom: 28px;
-    }
-
-    .plano-preco {
-      margin-bottom: 28px;
-    }
-
-    .plano-val {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 2.4rem; font-weight: 500;
-      color: #fff;
-      line-height: 1;
-    }
-
+    .plano-icone { font-size: 1.5rem; margin-bottom: 12px; }
+    .plano-nome { font-family: 'Fraunces', serif; font-size: 1.05rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
+    .plano-perfil { font-size: 0.76rem; color: rgba(255,255,255,0.4); margin-bottom: 24px; line-height: 1.5; }
+    .plano-preco { margin-bottom: 24px; }
+    .plano-val { font-family: 'JetBrains Mono', monospace; font-size: 2.2rem; font-weight: 500; color: #fff; line-height: 1; }
     .plano-val.gold { color: var(--dourado); }
+    .plano-per { font-size: 0.76rem; color: rgba(255,255,255,0.38); margin-top: 4px; }
+    .plano-sep { height: 1px; background: rgba(255,255,255,0.08); margin-bottom: 20px; }
 
-    .plano-per {
-      font-size: 0.8rem;
-      color: rgba(255,255,255,0.4);
-      margin-top: 4px;
-    }
-
-    .plano-sep {
-      height: 1px;
-      background: rgba(255,255,255,0.08);
-      margin-bottom: 24px;
-    }
-
-    .plano-items {
-      list-style: none;
-      display: flex; flex-direction: column; gap: 12px;
-      margin-bottom: 32px;
-    }
-
-    .plano-items li {
-      display: flex; align-items: flex-start; gap: 10px;
-      font-size: 0.85rem;
-      color: rgba(255,255,255,0.75);
-      line-height: 1.5;
-    }
-
+    .plano-items { list-style: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+    .plano-items li { display: flex; align-items: flex-start; gap: 9px; font-size: 0.82rem; color: rgba(255,255,255,0.72); line-height: 1.45; }
     .plano-items li .check { color: #4ADE80; flex-shrink: 0; margin-top: 1px; }
-    .plano-items li .cross { color: rgba(255,255,255,0.25); flex-shrink: 0; margin-top: 1px; }
+    .plano-items li .cross { color: rgba(255,255,255,0.22); flex-shrink: 0; margin-top: 1px; }
+    .plano-items li .star { color: var(--dourado); flex-shrink: 0; margin-top: 1px; }
 
-    .btn-plano {
-      display: block; width: 100%;
-      text-align: center;
-      padding: 14px;
-      border-radius: 8px;
-      font-size: 0.9rem; font-weight: 600;
-      text-decoration: none;
-      transition: all 0.25s;
-      cursor: pointer; border: none;
-    }
+    .plano-arquivo-tag { display: inline-flex; align-items: center; gap: 5px; background: rgba(240,180,41,0.15); border: 1px solid rgba(240,180,41,0.3); border-radius: 6px; padding: 4px 10px; font-size: 0.72rem; font-weight: 600; color: var(--dourado); font-family: 'JetBrains Mono', monospace; margin-bottom: 16px; }
 
-    .btn-plano-basic {
-      background: rgba(255,255,255,0.1);
-      border: 1px solid rgba(255,255,255,0.2);
-      color: #fff;
-    }
+    .btn-plano { display: block; width: 100%; text-align: center; padding: 13px; border-radius: 8px; font-size: 0.88rem; font-weight: 600; text-decoration: none; transition: all 0.25s; cursor: pointer; border: none; }
+    .btn-plano-basic { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; }
     .btn-plano-basic:hover { background: rgba(255,255,255,0.2); }
-
-    .btn-plano-plus {
-      background: var(--dourado);
-      color: var(--azul);
-    }
+    .btn-plano-plus { background: var(--dourado); color: var(--azul); }
     .btn-plano-plus:hover { background: #E0A820; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(240,180,41,0.3); }
+    .btn-plano-ultra { background: linear-gradient(135deg, var(--dourado), #E8A020); color: var(--azul); }
+    .btn-plano-ultra:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(240,180,41,0.4); }
+
+    /* Nota taxa de sucesso */
+    .planos-nota { text-align: center; margin-top: 28px; font-size: 0.78rem; color: rgba(255,255,255,0.35); max-width: 600px; margin-left: auto; margin-right: auto; line-height: 1.6; position: relative; }
+
+    /* ── DIFERENCIAIS ── */
+    .diferenciais-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .dif-card { background: var(--cinza-l); border-radius: 16px; padding: 32px 28px; transition: all 0.25s; border: 1px solid var(--cinza-m); }
+    .dif-card:hover { transform: translateY(-4px); box-shadow: 0 16px 48px rgba(15,37,68,0.1); border-color: var(--verde); }
+    .dif-icon { width: 48px; height: 48px; background: var(--verde); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 20px; }
+    .dif-title { font-family: 'Fraunces', serif; font-size: 1.05rem; font-weight: 700; color: var(--azul); margin-bottom: 10px; }
+    .dif-desc { font-size: 0.88rem; color: var(--cinza-t); line-height: 1.65; }
 
     /* ── COMO FUNCIONA ── */
-    .como-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 32px;
-      counter-reset: steps;
-    }
-
-    .como-step {
-      text-align: center;
-      position: relative;
-    }
-
-    .como-step::after {
-      content: '';
-      position: absolute;
-      top: 28px; right: -16px;
-      width: 32px; height: 2px;
-      background: var(--cinza-m);
-    }
+    .como-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; counter-reset: steps; }
+    .como-step { text-align: center; position: relative; }
+    .como-step::after { content: ''; position: absolute; top: 28px; right: -16px; width: 32px; height: 2px; background: var(--cinza-m); }
     .como-step:last-child::after { display: none; }
-
-    .como-num {
-      width: 56px; height: 56px;
-      background: var(--azul);
-      color: #fff;
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 1rem; font-weight: 500;
-      margin: 0 auto 20px;
-    }
-
-    .como-titulo {
-      font-family: 'Fraunces', serif;
-      font-size: 0.95rem; font-weight: 700;
-      color: var(--azul);
-      margin-bottom: 8px;
-    }
-
-    .como-desc {
-      font-size: 0.82rem;
-      color: var(--cinza-t);
-      line-height: 1.6;
-    }
+    .como-num { width: 56px; height: 56px; background: var(--azul); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 1rem; font-weight: 500; margin: 0 auto 20px; }
+    .como-titulo { font-family: 'Fraunces', serif; font-size: 0.95rem; font-weight: 700; color: var(--azul); margin-bottom: 8px; }
+    .como-desc { font-size: 0.82rem; color: var(--cinza-t); line-height: 1.6; }
 
     /* ── CTA FINAL ── */
-    .cta-section {
-      background: var(--verde);
-      padding: 80px 5%;
-      text-align: center;
-    }
-
-    .cta-section h2 {
-      font-family: 'Fraunces', serif;
-      font-size: clamp(1.8rem, 3vw, 2.4rem);
-      font-weight: 800;
-      color: #fff;
-      margin-bottom: 16px;
-    }
-
-    .cta-section p {
-      font-size: 1rem;
-      color: rgba(255,255,255,0.8);
-      margin-bottom: 36px;
-    }
-
-    .cta-btns {
-      display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;
-    }
-
-    .btn-cta-white {
-      background: #fff;
-      color: var(--verde);
-      padding: 14px 32px;
-      border-radius: 8px;
-      font-size: 0.95rem; font-weight: 700;
-      text-decoration: none;
-      transition: all 0.25s;
-    }
+    .cta-section { background: var(--verde); padding: 80px 5%; text-align: center; }
+    .cta-section h2 { font-family: 'Fraunces', serif; font-size: clamp(1.8rem, 3vw, 2.4rem); font-weight: 800; color: #fff; margin-bottom: 16px; }
+    .cta-section p { font-size: 1rem; color: rgba(255,255,255,0.8); margin-bottom: 36px; }
+    .cta-btns { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
+    .btn-cta-white { background: #fff; color: var(--verde); padding: 14px 32px; border-radius: 8px; font-size: 0.95rem; font-weight: 700; text-decoration: none; transition: all 0.25s; }
     .btn-cta-white:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
-
-    .btn-cta-outline {
-      background: transparent;
-      color: #fff;
-      padding: 14px 32px;
-      border-radius: 8px;
-      font-size: 0.95rem; font-weight: 600;
-      text-decoration: none;
-      border: 2px solid rgba(255,255,255,0.6);
-      transition: all 0.25s;
-    }
+    .btn-cta-outline { background: transparent; color: #fff; padding: 14px 32px; border-radius: 8px; font-size: 0.95rem; font-weight: 600; text-decoration: none; border: 2px solid rgba(255,255,255,0.6); transition: all 0.25s; }
     .btn-cta-outline:hover { border-color: #fff; background: rgba(255,255,255,0.1); }
 
     /* ── FOOTER ── */
-    footer {
-      background: var(--tinta);
-      padding: 40px 5%;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 16px;
-    }
-
-    .footer-logo {
-      display: flex; align-items: center; gap: 10px;
-      text-decoration: none;
-    }
-
-    .footer-copy {
-      font-size: 0.78rem;
-      color: rgba(255,255,255,0.35);
-    }
-
-    .footer-links {
-      display: flex; gap: 24px;
-    }
-
-    .footer-links a {
-      font-size: 0.78rem;
-      color: rgba(255,255,255,0.35);
-      text-decoration: none;
-      transition: color 0.2s;
-    }
+    footer { background: var(--tinta); padding: 40px 5%; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+    .footer-copy { font-size: 0.78rem; color: rgba(255,255,255,0.35); }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a { font-size: 0.78rem; color: rgba(255,255,255,0.35); text-decoration: none; transition: color 0.2s; }
     .footer-links a:hover { color: rgba(255,255,255,0.7); }
 
     /* ── WHATSAPP FIXO ── */
-    .whats-btn {
-      position: fixed;
-      bottom: 28px; right: 28px;
-      width: 60px; height: 60px;
-      background: var(--whats);
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 4px 20px rgba(37,211,102,0.4);
-      z-index: 200;
-      text-decoration: none;
-      transition: all 0.25s;
-      animation: whatsFloat 3s ease-in-out infinite;
-    }
-    .whats-btn:hover {
-      transform: scale(1.1);
-      box-shadow: 0 8px 32px rgba(37,211,102,0.5);
-    }
-
+    .whats-btn { position: fixed; bottom: 28px; right: 28px; width: 60px; height: 60px; background: var(--whats); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 20px rgba(37,211,102,0.4); z-index: 200; text-decoration: none; transition: all 0.25s; animation: whatsFloat 3s ease-in-out infinite; }
+    .whats-btn:hover { transform: scale(1.1); box-shadow: 0 8px 32px rgba(37,211,102,0.5); }
     .whats-btn svg { width: 32px; height: 32px; fill: #fff; }
-
-    @keyframes whatsFloat {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-6px); }
-    }
-
-    .whats-tooltip {
-      position: fixed;
-      bottom: 38px; right: 96px;
-      background: var(--azul);
-      color: #fff;
-      font-size: 0.78rem; font-weight: 500;
-      padding: 8px 14px;
-      border-radius: 8px;
-      white-space: nowrap;
-      opacity: 0; pointer-events: none;
-      transition: opacity 0.2s;
-    }
+    @keyframes whatsFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+    .whats-tooltip { position: fixed; bottom: 38px; right: 96px; background: var(--azul); color: #fff; font-size: 0.78rem; font-weight: 500; padding: 8px 14px; border-radius: 8px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
     .whats-btn:hover ~ .whats-tooltip { opacity: 1; }
 
     /* ── MOBILE ── */
     @media (max-width: 768px) {
-      nav { padding: 0 5%; }
       .nav-links { display: none; }
       #nav-cta-mobile { display: inline-flex !important; }
       .hero-grid { grid-template-columns: 1fr; gap: 40px; }
       .hero-visual { display: none; }
       .hero { padding: 96px 5% 64px; }
-      .hero h1 { font-size: 2.4rem; line-height: 1.1; }
-      .hero p { font-size: 1rem; }
+      .hero h1 { font-size: 2.4rem; }
       .hero-ctas { flex-direction: column; }
       .btn-primary, .btn-secondary { width: 100%; justify-content: center; padding: 16px 24px; font-size: 1rem; }
-      .hero-stats { gap: 24px; }
-      .stat-num { font-size: 1.8rem; }
-      .stat-lbl { font-size: 0.8rem; }
       .section { padding: 72px 5%; }
-      .section-title { font-size: 2rem; }
-      .section-sub { font-size: 0.95rem; margin-bottom: 40px; }
       .diferenciais-grid { grid-template-columns: 1fr; gap: 16px; }
-      .dif-card { padding: 24px 20px; }
-      .dif-title { font-size: 1rem; }
-      .dif-desc { font-size: 0.9rem; }
-      .planos-grid { grid-template-columns: 1fr; gap: 32px; }
-      .plano-card { padding: 32px 24px; }
-      .plano-val { font-size: 2.2rem; }
-      .plano-items li { font-size: 0.9rem; }
-      .btn-plano { padding: 16px; font-size: 0.95rem; }
+      .planos-grid { grid-template-columns: 1fr; gap: 28px; max-width: 420px; }
+      .plano-card { padding: 32px 22px; }
       .como-grid { grid-template-columns: repeat(2,1fr); gap: 24px; }
       .como-step::after { display: none; }
-      .como-num { width: 48px; height: 48px; font-size: 0.9rem; }
-      .como-titulo { font-size: 0.9rem; }
-      .como-desc { font-size: 0.82rem; }
-      .cta-section h2 { font-size: 1.8rem; }
       .cta-btns { flex-direction: column; align-items: center; }
-      .btn-cta-white, .btn-cta-outline { width: 100%; max-width: 320px; text-align: center; padding: 16px 24px; }
+      .btn-cta-white, .btn-cta-outline { width: 100%; max-width: 320px; text-align: center; }
       footer { flex-direction: column; align-items: flex-start; gap: 12px; }
-      .footer-links { flex-wrap: wrap; gap: 16px; }
-      .whats-btn { bottom: 20px; right: 20px; width: 56px; height: 56px; }
       .planos-section { padding: 72px 5%; }
     }
 
     @media (min-width: 769px) and (max-width: 1024px) {
-      .hero h1 { font-size: 2.8rem; }
+      .planos-grid { grid-template-columns: 1fr; max-width: 500px; gap: 28px; }
       .diferenciais-grid { grid-template-columns: repeat(2, 1fr); }
       .como-grid { grid-template-columns: repeat(2, 1fr); }
       .como-step::after { display: none; }
-      .section { padding: 80px 5%; }
     }
 
-    @media (min-width: 1400px) {
-      .hero-grid { max-width: 1300px; }
-      .section-inner { max-width: 1300px; }
-      .hero h1 { font-size: 4rem; }
+    @media (min-width: 1025px) and (max-width: 1200px) {
+      .planos-grid { gap: 16px; }
+      .plano-card { padding: 28px 20px; }
     }
   </style>
 </head>
@@ -775,12 +259,8 @@
       <h1>Copiloto <em>Fiscal, Financeiro</em> e Contábil</h1>
       <p>Analise NFs, extratos e laudos de solo em segundos. Identifique créditos tributários, riscos fiscais e economize horas de trabalho manual.</p>
       <div class="hero-ctas">
-        <a href="https://wa.me/556593429981?text=Olá!%20Quero%20conhecer%20o%20Contábil%20Inteligente" target="_blank" class="btn-primary">
-          💬 Falar com especialista
-        </a>
-        <a href="https://contabilinteligente.api.br/index.html" class="btn-secondary">
-          Já sou cliente →
-        </a>
+        <a href="https://wa.me/556593429981?text=Olá!%20Quero%20conhecer%20o%20Contábil%20Inteligente" target="_blank" class="btn-primary">💬 Falar com especialista</a>
+        <a href="https://contabilinteligente.api.br/index.html" class="btn-secondary">Já sou cliente →</a>
       </div>
       <div class="hero-stats">
         <div class="stat">
@@ -801,10 +281,8 @@
     <div class="hero-visual">
       <div class="mockup-card">
         <div class="mockup-header">
-          <div class="mockup-dots">
-            <span></span><span></span><span></span>
-          </div>
-          <div class="mockup-title">ci.assistant · análise fiscal</div>
+          <div class="mockup-dots"><span></span><span></span><span></span></div>
+          <div class="mockup-title">ci.assistant · painel de auditoria</div>
         </div>
         <div>
           <div class="mockup-tag tag-user">Você</div>
@@ -828,7 +306,7 @@
           <div class="result-item">
             <span class="result-icon">📋</span>
             <span class="result-text">Saldo final (informativo)</span>
-            <span class="result-val val-yellow">Não somado</span>
+            <span class="result-val val-yellow">Não somado ✓</span>
           </div>
         </div>
       </div>
@@ -847,56 +325,85 @@
 
       <!-- BÁSICO -->
       <div class="plano-card">
+        <div class="plano-icone">🟢</div>
         <div class="plano-nome">Plano Básico</div>
-        <div class="plano-perfil">Ideal para BPO Financeiro, PF, MEI e Técnico Agrícola</div>
+        <div class="plano-perfil">Pequeno Produtor Rural, Técnico Agrícola, MEI e BPO Financeiro</div>
         <div class="plano-preco">
           <div class="plano-val">R$ 197</div>
-          <div class="plano-per">/mês · R$ 6,56 por dia</div>
+          <div class="plano-per">/mês · 50 créditos inclusos</div>
         </div>
+        <div class="plano-arquivo-tag">📎 1 arquivo por análise</div>
         <div class="plano-sep"></div>
         <ul class="plano-items">
-          <li><span class="check">✓</span> Análise de extratos bancários</li>
+          <li><span class="check">✓</span> Extratos bancários</li>
+          <li><span class="check">✓</span> NF-e, NFS-e e CT-e</li>
           <li><span class="check">✓</span> Laudos de solo e agronegócio</li>
-          <li><span class="check">✓</span> Dúvidas sobre MEI, IR e DAS</li>
-          <li><span class="check">✓</span> Conciliação bancária</li>
-          <li><span class="check">✓</span> Até 2 arquivos por análise</li>
-          <li><span class="check">✓</span> Suporte via WhatsApp</li>
-          <li><span class="cross">✗</span> NF-e, NFS-e, CT-e</li>
+          <li><span class="check">✓</span> Dúvidas MEI, IR e DAS</li>
+          <li><span class="check">✓</span> Regimes: MEI e Simples Nacional</li>
+          <li><span class="check">✓</span> Suporte via WhatsApp IA</li>
           <li><span class="cross">✗</span> Créditos ICMS/PIS/COFINS</li>
-          <li><span class="cross">✗</span> Relatório mensal fiscal</li>
+          <li><span class="cross">✗</span> Riscos fiscais avançados</li>
         </ul>
-        <a href="https://wa.me/556593429981?text=Olá!%20Quero%20contratar%20o%20Plano%20Básico%20do%20Contábil%20Inteligente" target="_blank" class="btn-plano btn-plano-basic">
-          Contratar Básico
-        </a>
+        <a href="https://wa.me/556593429981?text=Olá!%20Quero%20contratar%20o%20Plano%20Básico%20do%20Contábil%20Inteligente" target="_blank" class="btn-plano btn-plano-basic">Contratar Básico</a>
       </div>
 
       <!-- PLUS -->
       <div class="plano-card destaque">
         <div class="plano-badge-top">✦ Mais popular</div>
+        <div class="plano-icone">🔵</div>
         <div class="plano-nome">Plano Plus</div>
-        <div class="plano-perfil">Ideal para PJ, Escritórios Contábeis, Fiscal e Financeiro</div>
+        <div class="plano-perfil">Contadores Fiscais, Financeiros e Escritórios médio porte</div>
         <div class="plano-preco">
-          <div class="plano-val gold">R$ 379</div>
-          <div class="plano-per">/mês · R$ 12,63 por dia</div>
+          <div class="plano-val gold">R$ 397</div>
+          <div class="plano-per">/mês · 200 créditos inclusos</div>
         </div>
+        <div class="plano-arquivo-tag">📎 3 arquivos por análise</div>
         <div class="plano-sep"></div>
         <ul class="plano-items">
-          <li><span class="check">✓</span> Tudo do plano Básico</li>
-          <li><span class="check">✓</span> NF-e, NFS-e e CT-e</li>
+          <li><span class="check">✓</span> Tudo do Plano Básico</li>
           <li><span class="check">✓</span> Créditos de ICMS, PIS e COFINS</li>
           <li><span class="check">✓</span> Riscos fiscais e erros de CFOP</li>
           <li><span class="check">✓</span> Retenções por regime tributário</li>
           <li><span class="check">✓</span> Relatório mensal automático</li>
-          <li><span class="check">✓</span> Até 6 arquivos por análise</li>
+          <li><span class="check">✓</span> Regimes: Simples, Presumido, Agro</li>
           <li><span class="check">✓</span> Todos os setores de MT</li>
-          <li><span class="check">✓</span> Suporte prioritário WhatsApp</li>
+          <li><span class="check">✓</span> WhatsApp IA + Gerente de Conta</li>
         </ul>
-        <a href="https://wa.me/556593429981?text=Olá!%20Quero%20contratar%20o%20Plano%20Plus%20do%20Contábil%20Inteligente" target="_blank" class="btn-plano btn-plano-plus">
-          Contratar Plus
-        </a>
+        <a href="https://wa.me/556593429981?text=Olá!%20Quero%20contratar%20o%20Plano%20Plus%20do%20Contábil%20Inteligente" target="_blank" class="btn-plano btn-plano-plus">Contratar Plus</a>
+      </div>
+
+      <!-- ULTRA -->
+      <div class="plano-card ultra">
+        <div class="plano-badge-ultra">👑 Enterprise</div>
+        <div class="plano-icone">👑</div>
+        <div class="plano-nome">Plano Ultra</div>
+        <div class="plano-perfil">Grandes Escritórios e Empresas Lucro Real alta complexidade</div>
+        <div class="plano-preco">
+          <div class="plano-val gold">R$ 797</div>
+          <div class="plano-per">/mês · 400 créditos inclusos</div>
+        </div>
+        <div class="plano-arquivo-tag">📎 6 arquivos por análise</div>
+        <div class="plano-sep"></div>
+        <ul class="plano-items">
+          <li><span class="check">✓</span> Tudo do Plano Plus</li>
+          <li><span class="check">✓</span> PDFs extensos (+20 páginas)</li>
+          <li><span class="check">✓</span> Lucro Presumido alta complexidade</li>
+          <li><span class="check">✓</span> Lucro Real alta complexidade</li>
+          <li><span class="check">✓</span> SLA prioritário de atendimento</li>
+          <li><span class="check">✓</span> Gerente de Conta dedicado</li>
+          <li><span class="check">✓</span> WhatsApp + Suporte humano</li>
+          <li><span class="star">★</span> PDFs +20 pág: 3 créditos extras</li>
+          <li><span class="star">★</span> Onboarding personalizado</li>
+        </ul>
+        <a href="https://wa.me/556593429981?text=Olá!%20Quero%20conhecer%20o%20Plano%20Ultra%20do%20Contábil%20Inteligente" target="_blank" class="btn-plano btn-plano-ultra">Contratar Ultra</a>
       </div>
 
     </div>
+
+    <p class="planos-nota">
+      ★ Taxa de sucesso sobre economia fiscal identificada: 5% até R$ 5k · 3% até R$ 20k · 2% até R$ 100k · 1% acima.<br>
+      Cobrada apenas quando há recuperação tributária identificada. Sem surpresas.
+    </p>
   </div>
 </section>
 
@@ -906,7 +413,6 @@
     <div class="section-tag">Por que o Contábil Inteligente</div>
     <h2 class="section-title">Três pilares.<br>Uma plataforma.</h2>
     <p class="section-sub">Análise integrada que vai do documento ao diagnóstico — sem planilhas, sem horas de trabalho manual.</p>
-
     <div class="diferenciais-grid">
       <div class="dif-card">
         <div class="dif-icon">⚖️</div>
@@ -947,8 +453,7 @@
   <div class="section-inner">
     <div class="section-tag">Simples assim</div>
     <h2 class="section-title">Como funciona</h2>
-    <p class="section-sub">Do documento ao diagnóstico em menos de 2 minutos.</p>
-
+    <p class="section-sub">Do documento ao painel de auditoria em menos de 10 segundos.</p>
     <div class="como-grid">
       <div class="como-step">
         <div class="como-num">01</div>
@@ -962,13 +467,13 @@
       </div>
       <div class="como-step">
         <div class="como-num">03</div>
-        <div class="como-titulo">IA analisa tudo</div>
-        <div class="como-desc">Diagnóstico fiscal, financeiro e contábil em segundos.</div>
+        <div class="como-titulo">IA processa e calcula</div>
+        <div class="como-desc">Extração JSON + guardrails fiscais + CNPJ automático em segundos.</div>
       </div>
       <div class="como-step">
         <div class="como-num">04</div>
-        <div class="como-titulo">Ação imediata</div>
-        <div class="como-desc">Receba o resumo, os alertas e o que fazer agora.</div>
+        <div class="como-titulo">Painel de Auditoria</div>
+        <div class="como-desc">Gráfico, alertas, tabela interativa e análise completa prontos.</div>
       </div>
     </div>
   </div>
@@ -980,19 +485,15 @@
     <h2>Pronto para economizar horas de análise?</h2>
     <p>Fale com nossa equipe agora e comece a usar em menos de 24 horas.</p>
     <div class="cta-btns">
-      <a href="https://wa.me/556593429981?text=Olá!%20Quero%20conhecer%20o%20Contábil%20Inteligente" target="_blank" class="btn-cta-white">
-        💬 Falar no WhatsApp
-      </a>
-      <a href="https://contabilinteligente.api.br/index.html" class="btn-cta-outline">
-        Já sou cliente →
-      </a>
+      <a href="https://wa.me/556593429981?text=Olá!%20Quero%20conhecer%20o%20Contábil%20Inteligente" target="_blank" class="btn-cta-white">💬 Falar no WhatsApp</a>
+      <a href="https://contabilinteligente.api.br/index.html" class="btn-cta-outline">Já sou cliente →</a>
     </div>
   </div>
 </section>
 
 <!-- FOOTER -->
 <footer>
-  <a href="#" class="footer-logo">
+  <a href="#" style="display:flex;align-items:center;gap:10px;text-decoration:none">
     <div class="logo-icon">CI</div>
     <span class="logo-text" style="color:#fff">Contábil <span style="color:var(--dourado)">Inteligente</span></span>
   </a>
@@ -1012,19 +513,13 @@
 <div class="whats-tooltip">Falar no WhatsApp</div>
 
 <script>
-  // Mobile nav CTA
   if (window.innerWidth <= 768) {
     document.getElementById('nav-cta-mobile').style.display = 'inline-flex';
   }
-
-  // Scroll suave para âncoras
   document.querySelectorAll('a[href^="#"]').forEach(a => {
     a.addEventListener('click', e => {
       const target = document.querySelector(a.getAttribute('href'));
-      if (target) {
-        e.preventDefault();
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     });
   });
 </script>
