@@ -176,7 +176,31 @@ function contemDocumento(messages) {
 }
 
 // ── EXTRAÇÃO JSON (FASE 1) ──
+
+/**
+ * Injeta cache_control no primeiro documento/imagem da mensagem.
+ * Permite que o PDF seja cacheado entre a Fase 1 e Fase 2,
+ * reduzindo latência e custo da segunda chamada em até 90%.
+ */
+function adicionarCacheNoDocumento(messages) {
+  const copia = messages.map(msg => {
+    if (msg.role !== 'user' || !Array.isArray(msg.content)) return msg;
+    let primeiroDocCacheado = false;
+    const novoContent = msg.content.map(item => {
+      if (!primeiroDocCacheado && (item.type === 'document' || item.type === 'image')) {
+        primeiroDocCacheado = true;
+        return { ...item, cache_control: { type: 'ephemeral' } };
+      }
+      return item;
+    });
+    return { ...msg, content: novoContent };
+  });
+  return copia;
+}
+
 async function extrairJSON(messages, apiKey) {
+  const messagesComCache = adicionarCacheNoDocumento(messages);
+
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -189,7 +213,7 @@ async function extrairJSON(messages, apiKey) {
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: [{ type: 'text', text: SYSTEM_PROMPT_JSON, cache_control: { type: 'ephemeral' } }],
-      messages
+      messages: messagesComCache
     })
   });
 
@@ -267,7 +291,8 @@ function processarJSON(json, planoAtual = 'basico') {
 
 // ── RESPOSTA FINAL COM STREAMING (FASE 3) ──
 async function responderComResultados(messages, resultadoCalculo, dadosCNPJ, contextoMemoria, apiKey) {
-  const msgs = [...messages];
+  // Injeta cache no documento (reutiliza cache da Fase 1 — sem custo extra)
+  let msgs = adicionarCacheNoDocumento([...messages]);
   const idx = [...msgs].map(m => m.role).lastIndexOf('user');
 
   if (idx >= 0) {
