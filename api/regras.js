@@ -112,42 +112,33 @@ function validarJsonExtrato(json) {
 function arredondar(valor) { return Math.round((valor + Number.EPSILON) * 100) / 100; }
 function formatarMoeda(valor) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor); }
 
+/**
+ * Calcula taxa de sucesso sobre crédito tributário identificado.
+ * Nova estrutura (blueprint 2026):
+ *  Faixa 1: até R$ 300.000 → 10% fixo
+ *  Faixa 2: acima de R$ 300.000 → 10% sobre primeiros 300k + 5% sobre excedente
+ */
 function calcularTaxaSucesso(economia) {
   if (!economia || economia <= 0) return 0;
-  if (economia <= 5000)   return arredondar(economia * 0.05);
-  if (economia <= 20000)  return arredondar(economia * 0.03);
-  if (economia <= 100000) return arredondar(economia * 0.02);
-  return arredondar(economia * 0.01);
+  if (economia <= 300000) return arredondar(economia * 0.10);
+  return arredondar((300000 * 0.10) + ((economia - 300000) * 0.05));
 }
 
+/**
+ * Retorna descrição da faixa para exibição no painel
+ */
 function percentualTaxaSucesso(economia) {
   if (!economia || economia <= 0) return 0;
-  if (economia <= 5000)   return 5;
-  if (economia <= 20000)  return 3;
-  if (economia <= 100000) return 2;
-  return 1;
+  if (economia <= 300000) return 10;
+  return '10+5'; // faixa mista — exibir como "10% + 5% excedente"
 }
 
+/**
+ * Com plano único Ultra, não há upsell.
+ * Mantida a função por compatibilidade — sempre retorna exibir: false.
+ */
 function verificarGatilhoUpsell(resultado, planoAtual, economiaIdentificada = 0) {
-  const plano = normalizar(planoAtual || '');
-  if (!plano.includes('plus')) return { exibir: false, motivo: null, mensagem: null };
-  const economia = parseFloat(economiaIdentificada) || 0;
-  const totalTransacoes = resultado?.transacoesClassificadas?.length || 0;
-  const totalEntradas = resultado?.totalEntradas || 0;
-  const temAlertaAlto = Array.isArray(resultado?.alertas) && resultado.alertas.some(a => a.includes('⚠️') || a.toLowerCase().includes('crítico') || a.toLowerCase().includes('alto'));
-  const criterios = { economiaAlta: economia > 10000, volumeMassivo: totalTransacoes > 50, alertaAlto: temAlertaAlto, entradasAltas: totalEntradas > 50000 };
-  const disparou = Object.values(criterios).some(Boolean);
-  if (!disparou) return { exibir: false, motivo: null, mensagem: null };
-  let motivo = 'complexidade_fiscal';
-  let detalhe = 'complexidade tributária avançada identificada';
-  if (criterios.economiaAlta) { motivo = 'volume_financeiro'; detalhe = `economia potencial de ${formatarMoeda(economia)} identificada`; }
-  else if (criterios.volumeMassivo) { motivo = 'volume_transacoes'; detalhe = `${totalTransacoes} transações detectadas — volume acima do padrão Plus`; }
-  else if (criterios.entradasAltas) { motivo = 'faturamento_alto'; detalhe = `faturamento de ${formatarMoeda(totalEntradas)} no período`; }
-  return {
-    exibir: true, motivo,
-    mensagem: `📈 Esta análise identificou ${detalhe}. O Plano Ultra inclui apuração completa de Lucro Presumido avançado e Lucro Real para volumes desta magnitude, com Gerente de Conta dedicado.`,
-    criteriosAtivados: Object.entries(criterios).filter(([, v]) => v).map(([k]) => k),
-  };
+  return { exibir: false, motivo: null, mensagem: null };
 }
 
 export {
