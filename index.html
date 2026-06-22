@@ -428,7 +428,27 @@
     }
 
     window.desbloquearGuia = () => {
-      mostrarNotif('Redirecionando para pagamento... (integração em breve)');
+      const economia = window._economiaAtual || 0;
+      if (economia <= 0) return;
+
+      // Calcula taxa de êxito
+      const taxa = economia <= 300000
+        ? economia * 0.10
+        : (300000 * 0.10) + ((economia - 300000) * 0.05);
+
+      const liquido  = economia - taxa;
+      const empresa  = window.APP.empresa.nomeEmpresa || 'Cliente';
+      const fmtVal   = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+      const msg =
+        `Olá! Sou ${empresa} e quero desbloquear o Guia de Recuperação de Crédito ICMS.\n\n` +
+        `📋 *Resumo da auditoria:*\n` +
+        `• Crédito ICMS identificado: ${fmtVal(economia)}\n` +
+        `• Honorários de êxito: ${fmtVal(taxa)}\n` +
+        `• Líquido para minha empresa: ${fmtVal(liquido)}\n\n` +
+        `Quero prosseguir com o desbloqueio do guia e o pagamento dos honorários.`;
+
+      window.open(`https://wa.me/556593429981?text=${encodeURIComponent(msg)}`, '_blank');
     };
 
     // Análise textual da IA
