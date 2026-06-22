@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contábil Inteligente | Administração</title>
+  <title>Contábil Inteligente | Admin — Auditoria ICMS</title>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -28,18 +28,11 @@
     window.APP = { clientes: [], analises: [] };
 
     function classificarPlano(plano) {
-      const p = (plano || '').toLowerCase();
-      if (p.includes('ultra') || p.includes('enterprise')) return 'ultra';
-      if (p.includes('plus')) return 'plus';
-      return 'basico';
+      return 'ultra'; // Plano único Ultra
     }
 
     function precoPlano(plano) {
-      switch (classificarPlano(plano)) {
-        case 'ultra': return 797;
-        case 'plus':  return 397;
-        default:      return 197;
-      }
+      return 797; // Plano único Ultra R$ 797/mês
     }
 
     window.fazerLogin = async () => {
@@ -103,20 +96,25 @@
       const A = window.APP.analises;
       const agora = new Date();
       const mes = A.filter(a => a.mes === agora.getMonth()+1 && a.ano === agora.getFullYear());
-      const ultra  = C.filter(c => classificarPlano(c.plano) === 'ultra').length;
-      const plus   = C.filter(c => classificarPlano(c.plano) === 'plus').length;
-      const basico = C.filter(c => classificarPlano(c.plano) === 'basico').length;
-      const receita = C.reduce((s, c) => s + precoPlano(c.plano), 0);
-      const econ   = mes.reduce((s, a) => s + (a.economia || 0), 0);
+
+      const totalClientes = C.length;
+      const receitaMensal = totalClientes * 797;
+      const creditosICMS  = mes.reduce((s, a) => s + (a.economia || 0), 0);
+      const honorarios    = mes.reduce((s, a) => {
+        const e = a.economia || 0;
+        if (e <= 0) return s;
+        if (e <= 300000) return s + e * 0.10;
+        return s + (300000 * 0.10) + ((e - 300000) * 0.05);
+      }, 0);
+      const riscos = mes.filter(a => a.temRisco).length;
+
       const s = (id, v) => { const e = document.getElementById(id); if(e) e.textContent = v; };
-      s('d-clientes', C.length);
-      s('d-ultra',    ultra);
-      s('d-plus',     plus);
-      s('d-basico',   basico);
-      s('d-analises', mes.length);
-      s('d-riscos',   mes.filter(a => a.temRisco).length);
-      s('d-receita',  `R$ ${receita.toLocaleString('pt-BR')}`);
-      s('d-econ',     `R$ ${econ.toLocaleString('pt-BR', {minimumFractionDigits:2})}`);
+      s('d-clientes',  totalClientes);
+      s('d-analises',  mes.length);
+      s('d-riscos',    riscos);
+      s('d-receita',   `R$ ${receitaMensal.toLocaleString('pt-BR')}`);
+      s('d-creditos',  `R$ ${creditosICMS.toLocaleString('pt-BR', {minimumFractionDigits:2})}`);
+      s('d-honorarios',`R$ ${Math.round(honorarios).toLocaleString('pt-BR')}`);
     }
 
     function renderClientes(filtro = '') {
@@ -128,7 +126,10 @@
       lista.innerHTML = C.map(c => {
         const analises = window.APP.analises.filter(a => a.uid === c.uid);
         const mes = analises.filter(a => a.mes === agora.getMonth()+1 && a.ano === agora.getFullYear());
-        const tipo = classificarPlano(c.plano);
+        const creditosMes = mes.reduce((s, a) => s + (a.economia || 0), 0);
+        const honorariosMes = creditosMes <= 0 ? 0 :
+          creditosMes <= 300000 ? creditosMes * 0.10 :
+          (300000 * 0.10) + ((creditosMes - 300000) * 0.05);
         const dataCad = c.dataCadastro ? new Date(c.dataCadastro).toLocaleDateString('pt-BR') : '—';
         const nomeSafe = (c.nomeEmpresa||'').replace(/'/g, "\\'");
         return `<div class="cliente-row">
@@ -139,12 +140,16 @@
             <div class="cliente-cad">Desde ${dataCad}</div>
           </div>
           <div>
-            <span class="plano-badge ${tipo}">${c.plano || 'Básico'}</span>
-            <div class="plano-val">R$ ${precoPlano(c.plano).toLocaleString('pt-BR')}/mês</div>
+            <span class="plano-badge ultra">Ultra</span>
+            <div class="plano-val">R$ 797/mês</div>
           </div>
           <div class="cliente-stats">
-            <span class="stat-destaque">${mes.length} análises/mês</span>
+            <span class="stat-destaque">${mes.length} auditorias/mês</span>
             <span>${analises.length} no total</span>
+          </div>
+          <div class="cliente-icms">
+            <div class="icms-credito">${creditosMes > 0 ? 'R$ ' + creditosMes.toLocaleString('pt-BR', {minimumFractionDigits:2}) : '—'}</div>
+            <div class="icms-honorario">${honorariosMes > 0 ? 'Hon: R$ ' + Math.round(honorariosMes).toLocaleString('pt-BR') : ''}</div>
           </div>
           <div class="cliente-acoes">
             <button class="btn-acao btn-editar" onclick="abrirEditar('${c.uid}')">Editar</button>
@@ -343,8 +348,8 @@
     .btn-add.verde { background:var(--verde); } .btn-add.verde:hover { background:#006B47; }
 
     .table-wrap { background:var(--branco); border:1px solid var(--rule); border-radius:8px; overflow:hidden; }
-    .table-header { display:grid; grid-template-columns:44px 1fr 150px 140px 160px; padding:10px 20px; background:var(--bg); border-bottom:1px solid var(--rule); font-size:0.66rem; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-3); }
-    .cliente-row { display:grid; grid-template-columns:44px 1fr 150px 140px 160px; align-items:center; padding:14px 20px; border-bottom:1px solid var(--rule); transition:background 0.15s; }
+    .table-header { display:grid; grid-template-columns:44px 1fr 120px 120px 140px 160px; padding:10px 20px; background:var(--bg); border-bottom:1px solid var(--rule); font-size:0.66rem; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-3); }
+    .cliente-row { display:grid; grid-template-columns:44px 1fr 120px 120px 140px 160px; align-items:center; padding:14px 20px; border-bottom:1px solid var(--rule); transition:background 0.15s; }
     .cliente-row:last-child { border-bottom:none; }
     .cliente-row:hover { background:var(--bg); }
     .cliente-avatar { width:32px; height:32px; background:var(--azul); color:var(--branco); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:600; font-family:'JetBrains Mono',monospace; }
@@ -353,7 +358,9 @@
     .cliente-email { font-size:0.72rem; color:var(--ink-3); font-family:'JetBrains Mono',monospace; margin-top:2px; }
     .cliente-cad { font-size:0.68rem; color:var(--ink-3); margin-top:2px; }
     .plano-val { font-size:0.7rem; color:var(--ink-3); margin-top:3px; font-family:'JetBrains Mono',monospace; }
-    .cliente-stats { font-size:0.74rem; color:var(--ink-3); display:flex; flex-direction:column; gap:2px; }
+    .cliente-icms { display:flex; flex-direction:column; gap:2px; }
+    .icms-credito { font-family:'JetBrains Mono',monospace; font-size:0.78rem; font-weight:600; color:var(--green); }
+    .icms-honorario { font-size:0.68rem; color:var(--ink-3); font-family:'JetBrains Mono',monospace; }
     .stat-destaque { font-weight:600; color:var(--ink-2); }
     .cliente-acoes { display:flex; gap:7px; }
     .btn-acao { font-size:0.72rem; padding:5px 10px; border-radius:3px; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif; font-weight:500; border:1px solid; transition:all 0.15s; }
@@ -461,14 +468,12 @@
             <button class="btn-add" onclick="carregarDados()">↺ Atualizar</button>
           </div>
           <div class="kpis">
-            <div class="kpi azul"><div class="kpi-num" id="d-clientes">—</div><div class="kpi-lbl">Clientes ativos</div></div>
-            <div class="kpi dourado"><div class="kpi-num" id="d-ultra">—</div><div class="kpi-lbl">Plano Ultra</div></div>
-            <div class="kpi dourado"><div class="kpi-num" id="d-plus">—</div><div class="kpi-lbl">Plano Plus</div></div>
-            <div class="kpi"><div class="kpi-num" id="d-basico">—</div><div class="kpi-lbl">Plano Básico</div></div>
-            <div class="kpi"><div class="kpi-num" id="d-analises">—</div><div class="kpi-lbl">Análises/mês</div></div>
+            <div class="kpi azul"><div class="kpi-num" id="d-clientes">—</div><div class="kpi-lbl">Clientes Ultra</div></div>
+            <div class="kpi"><div class="kpi-num" id="d-analises">—</div><div class="kpi-lbl">Auditorias/mês</div></div>
             <div class="kpi"><div class="kpi-num" id="d-riscos">—</div><div class="kpi-lbl">Alertas/mês</div></div>
-            <div class="kpi verde"><div class="kpi-num" id="d-receita">—</div><div class="kpi-lbl">Receita estimada</div></div>
-            <div class="kpi verde"><div class="kpi-num" id="d-econ">—</div><div class="kpi-lbl">Economia gerada</div></div>
+            <div class="kpi verde"><div class="kpi-num" id="d-receita">—</div><div class="kpi-lbl">Receita mensal</div></div>
+            <div class="kpi verde"><div class="kpi-num" id="d-creditos">—</div><div class="kpi-lbl">Créditos ICMS</div></div>
+            <div class="kpi dourado"><div class="kpi-num" id="d-honorarios">—</div><div class="kpi-lbl">Honorários êxito</div></div>
           </div>
           <div style="background:var(--branco);border:1px solid var(--rule);border-radius:8px;padding:18px 20px">
             <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:12px">Acesso rápido</div>
@@ -491,7 +496,7 @@
             <input class="search-inp" type="text" placeholder="Buscar por nome ou e-mail..." oninput="filtrarClientes(this.value)" />
           </div>
           <div class="table-wrap">
-            <div class="table-header"><div></div><div>Cliente</div><div>Plano</div><div>Uso</div><div>Ações</div></div>
+            <div class="table-header"><div></div><div>Cliente</div><div>Plano</div><div>Uso</div><div>Crédito ICMS/mês</div><div>Ações</div></div>
             <div id="lista-clientes"><div class="empty-state">Carregando...</div></div>
           </div>
         </div>
@@ -530,9 +535,7 @@
     <input class="inp" type="text" id="f-senha" placeholder="Mínimo 6 caracteres" />
     <label class="lbl">Plano</label>
     <select class="select-inp" id="f-plano">
-      <option value="Básico">🟢 Básico — R$ 197/mês · 1 arquivo · 50 créditos</option>
-      <option value="Plus">🔵 Plus — R$ 397/mês · 3 arquivos · 200 créditos</option>
-      <option value="Ultra">👑 Ultra — R$ 797/mês · 6 arquivos · 400 créditos</option>
+      <option value="Ultra">👑 Ultra — R$ 797/mês · Arquivos ilimitados · 400 créditos</option>
     </select>
     <div class="f-erro" id="f-erro"></div>
     <div class="modal-acoes">
@@ -552,9 +555,7 @@
     <input class="inp" type="text" id="e-nome" />
     <label class="lbl">Plano</label>
     <select class="select-inp" id="e-plano">
-      <option value="Básico">🟢 Básico — R$ 197/mês · 1 arquivo · 50 créditos</option>
-      <option value="Plus">🔵 Plus — R$ 397/mês · 3 arquivos · 200 créditos</option>
-      <option value="Ultra">👑 Ultra — R$ 797/mês · 6 arquivos · 400 créditos</option>
+      <option value="Ultra">👑 Ultra — R$ 797/mês · Arquivos ilimitados · 400 créditos</option>
     </select>
     <div class="f-erro" id="e-erro"></div>
     <div class="modal-acoes">
