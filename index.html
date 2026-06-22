@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contábil Inteligente | Copiloto Fiscal, Financeiro e Contábil</title>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <title>Contábil Inteligente | Auditoria de Crédito Tributário ICMS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -16,7 +16,7 @@
       authDomain: "contabil-inteligente.firebaseapp.com",
       projectId: "contabil-inteligente",
       storageBucket: "contabil-inteligente.firebasestorage.app",
-      messagingSenderId: "254707935067",
+      messagingSenderId: "254707935027",
       appId: "1:254707935067:web:aa602726f8a701baf75c7e"
     };
 
@@ -26,28 +26,22 @@
 
     window.APP = { user: null, empresa: {}, historico: [], arquivos: [], estadoPainel: null };
 
-    // ── LIMITES POR PLANO (blueprint oficial) ──
-    function getLimite() {
-      const plano = (window.APP.empresa.plano||'').toLowerCase();
-      if (plano.includes('ultra') || plano.includes('enterprise')) return 999;
-      if (plano.includes('plus')) return 3;
-      return 1; // Básico: 1 arquivo
-    }
+    // ── PLANO ÚNICO ULTRA ──
+    function getLimite() { return 999; } // Ultra: arquivos ilimitados
 
-    function getLimiteLabel() {
-      const plano = (window.APP.empresa.plano||'').toLowerCase();
-      if (plano.includes('ultra') || plano.includes('enterprise')) return 'Arquivos ilimitados';
-      if (plano.includes('plus')) return 'Até 3 arquivos por análise';
-      return 'Até 1 arquivo por análise';
-    }
+    function getLimiteLabel() { return 'Plano Ultra · Arquivos ilimitados'; }
 
-    // ── TAXA DE SUCESSO REGRESSIVA (blueprint §6) ──
+    // ── TAXA DE SUCESSO REGRESSIVA (nova estrutura blueprint) ──
     function calcularTaxaSucesso(economia) {
-      if (economia <= 0) return 0;
-      if (economia <= 5000) return economia * 0.05;
-      if (economia <= 20000) return economia * 0.03;
-      if (economia <= 100000) return economia * 0.02;
-      return economia * 0.01;
+      if (!economia || economia <= 0) return 0;
+      if (economia <= 300000) return economia * 0.10;
+      return (300000 * 0.10) + ((economia - 300000) * 0.05);
+    }
+
+    function descricaoTaxa(economia) {
+      if (!economia || economia <= 0) return '—';
+      if (economia <= 300000) return '10%';
+      return '10% + 5% excedente';
     }
 
     // ── AUTH ──
@@ -69,13 +63,12 @@
       if (user) {
         window.APP.user = user;
         try {
-          const snap = await getDoc(doc(db, "clientes", user.uid));
-          window.APP.empresa = snap.exists() ? snap.data() : { nomeEmpresa: user.email.split('@')[0], plano: 'Básico' };
-        } catch(e) { window.APP.empresa = { nomeEmpresa: 'Cliente', plano: 'Básico' }; }
+          const snap = await getDoc(doc(db, 'clientes', user.uid));
+          window.APP.empresa = snap.exists() ? snap.data() : { nomeEmpresa: user.email.split('@')[0], plano: 'Ultra' };
+        } catch(e) { window.APP.empresa = { nomeEmpresa: 'Cliente', plano: 'Ultra' }; }
         const nome = window.APP.empresa.nomeEmpresa || 'Cliente';
-        const plano = window.APP.empresa.plano || 'Básico';
         document.getElementById('hd-nome').textContent = nome;
-        document.getElementById('hd-plano').textContent = `Plano ${plano}`;
+        document.getElementById('hd-plano').textContent = 'Plano Ultra';
         document.getElementById('hd-email').textContent = user.email;
         document.getElementById('limite-info').textContent = getLimiteLabel();
         await carregarHistorico();
@@ -120,13 +113,8 @@
     window.selecionarArquivos = () => document.getElementById('upload-input').click();
 
     window.onArquivos = (input) => {
-      const lim = getLimite();
       const novos = Array.from(input.files).filter(f => f.type.startsWith('image/') || f.type === 'application/pdf');
-      const total = [...window.APP.arquivos, ...novos].slice(0, lim);
-      if (window.APP.arquivos.length + novos.length > lim && lim < 999) {
-        mostrarNotif(`Limite de ${lim} arquivo(s) para seu plano.`);
-      }
-      window.APP.arquivos = total;
+      window.APP.arquivos = [...window.APP.arquivos, ...novos];
       renderArquivos();
       input.value = '';
     };
@@ -135,9 +123,8 @@
     window.onDragLeave = (e) => e.currentTarget.classList.remove('drag');
     window.onDrop = (e) => {
       e.preventDefault(); e.currentTarget.classList.remove('drag');
-      const lim = getLimite();
       const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/') || f.type === 'application/pdf');
-      window.APP.arquivos = [...window.APP.arquivos, ...files].slice(0, lim);
+      window.APP.arquivos = [...window.APP.arquivos, ...files];
       renderArquivos();
     };
 
@@ -165,13 +152,18 @@
       });
     }
 
-    // ── LOADING ──
+    // ── LOADING — foco em ICMS ──
     const MENSAGENS_LOADING = [
-      'Lendo documento...', 'Identificando tipo e estrutura...',
-      'Consultando CNPJ na Receita Federal...', 'Extraindo transações...',
-      'Cruzando regras fiscais...', 'Classificando entradas e saídas...',
-      'Aplicando guardrails fiscais...', 'Calculando totais com precisão...',
-      'Calculando economia fiscal...', 'Preparando painel de auditoria...'
+      'Lendo documento fiscal...',
+      'Identificando tipo e estrutura...',
+      'Consultando CNPJ na Receita Federal...',
+      'Extraindo itens e CFOPs...',
+      'Aplicando matriz de elegibilidade ICMS...',
+      'Verificando substituição tributária (ST)...',
+      'Identificando DIFAL e CIAP...',
+      'Calculando créditos com guardrails RICMS-MT...',
+      'Apurando honorários de êxito...',
+      'Preparando laudo de auditoria fiscal...'
     ];
     let _loadingInterval = null, _loadingIdx = 0;
 
@@ -214,7 +206,7 @@
             content.push({ type: 'image', source: { type: 'base64', media_type: type.includes('png') ? 'image/png' : 'image/jpeg', data } });
           }
         }
-        content.push({ type: 'text', text: instrucao || 'Analise este documento com análise fiscal completa e detalhada.' });
+        content.push({ type: 'text', text: instrucao || 'Realize auditoria fiscal completa identificando créditos de ICMS elegíveis conforme RICMS-MT e LC 87/96.' });
 
         const messages = [{ role: 'user', content }];
         let resultadoCalculo = null, dadosCNPJ = null, respostaTexto = '';
@@ -229,7 +221,7 @@
             window.APP.estadoPainel = { resultadoCalculo, dadosCNPJ, respostaTexto, messages };
             renderPainel(resultadoCalculo, dadosCNPJ, respostaTexto);
             irParaTela('painel');
-            await salvar(instrucao || 'Análise de documento', respostaTexto, arqs.length, resultadoCalculo);
+            await salvar(instrucao || 'Auditoria ICMS', respostaTexto, arqs.length, resultadoCalculo);
             await carregarHistorico();
           },
           (e) => {
@@ -251,10 +243,7 @@
         const resp = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages,
-            planoAtual: (window.APP.empresa.plano || 'basico').toLowerCase()
-          })
+          body: JSON.stringify({ messages, planoAtual: 'ultra' })
         });
         if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Erro na API'); }
         const reader = resp.body.getReader();
@@ -286,11 +275,9 @@
     // ── RENDER PAINEL ──
     function renderPainel(resultado, cnpj, texto) {
       renderCardEmpresa(cnpj, resultado);
-      renderAlertas(resultado, cnpj, texto);
-      renderGrafico(resultado);
-      renderTabela(resultado);
-      renderUpsell(resultado);
-      renderEconomia(resultado, texto);
+      renderAlertas(resultado, cnpj);
+      renderCreditosICMS(resultado);
+      renderEconomia(resultado);
       renderAnaliseTexto(texto);
     }
 
@@ -299,7 +286,11 @@
       const el = document.getElementById('painel-empresa');
       if (!el) return;
       if (cnpj && cnpj.cnpj_formatado) {
-        const regimeLabel = { mei:'MEI', simples:'Simples Nacional', presumido:'Lucro Presumido', real:'Lucro Real', desconhecido:'Regime não identificado' }[cnpj.regime_inferido] || '—';
+        const regimeLabel = {
+          mei: 'MEI', simples: 'Simples Nacional',
+          presumido: 'Lucro Presumido', real: 'Lucro Real',
+          desconhecido: 'Regime não identificado'
+        }[cnpj.regime_inferido] || '—';
         const situOk = (cnpj.situacao||'').toUpperCase() === 'ATIVA';
         el.innerHTML = `
           <div class="pe-icon">🏢</div>
@@ -314,54 +305,42 @@
             </div>
             ${cnpj.municipio ? `<div class="pe-local">📍 ${cnpj.municipio}/${cnpj.uf}${cnpj.atividade_principal ? ' · ' + cnpj.atividade_principal : ''}</div>` : ''}
           </div>`;
-      } else if (resultado && resultado.meta) {
-        const meta = resultado.meta;
+      } else {
+        const meta = resultado?.meta || {};
         el.innerHTML = `
           <div class="pe-icon">📄</div>
           <div class="pe-info">
-            <div class="pe-nome">${meta.titular || meta.emissor || 'Documento analisado'}</div>
+            <div class="pe-nome">${meta.razao_social || meta.emissor || 'Documento analisado'}</div>
             <div class="pe-meta">
-              ${meta.banco ? `<span class="pe-tag pe-cnpj">${meta.banco}</span>` : ''}
-              ${meta.periodo ? `<span class="pe-tag pe-regime">${meta.periodo}</span>` : ''}
-              ${meta.regime && meta.regime !== 'desconhecido' ? `<span class="pe-tag pe-porte">${meta.regime}</span>` : ''}
+              ${meta.cnpj ? `<span class="pe-tag pe-cnpj">${meta.cnpj}</span>` : ''}
+              ${meta.regime_tributario_identificado ? `<span class="pe-tag pe-regime">${meta.regime_tributario_identificado}</span>` : ''}
+              ${meta.periodo_competencia ? `<span class="pe-tag pe-porte">${meta.periodo_competencia}</span>` : ''}
             </div>
           </div>`;
-      } else {
-        el.innerHTML = `<div class="pe-icon">📄</div><div class="pe-info"><div class="pe-nome">Documento analisado</div></div>`;
       }
     }
 
-    // Alertas fiscais — inclui alertas_fiscais do JSON da IA
-    function renderAlertas(resultado, cnpj, texto) {
+    // Alertas fiscais
+    function renderAlertas(resultado, cnpj) {
       const el = document.getElementById('painel-alertas');
       if (!el) return;
       const alertas = [];
 
-      // Alertas vindos do JSON extraído pela IA (blueprint §3)
-      if (resultado && resultado.meta && Array.isArray(resultado.meta.alertas_fiscais)) {
+      if (resultado?.meta?.alertas_fiscais) {
         resultado.meta.alertas_fiscais.forEach(a => {
           const nivel = (a.nivel||'').toLowerCase();
           alertas.push({
-            nivel: nivel === 'alto' ? 'alto' : nivel === 'médio' || nivel === 'medio' ? 'medio' : 'info',
+            nivel: nivel === 'alto' ? 'alto' : nivel === 'medio' || nivel === 'médio' ? 'medio' : 'info',
             texto: a.mensagem || ''
           });
         });
       }
 
-      // Alertas do regras.js
-      if (resultado) {
-        (resultado.alertas || []).forEach(a => {
-          if (a.includes('⚠️') || a.includes('superam')) alertas.push({ nivel: 'alto', texto: a.replace(/[⚠️ℹ️]/g,'').trim() });
+      if (resultado?.alertas) {
+        resultado.alertas.forEach(a => {
+          if (a.includes('⚠️')) alertas.push({ nivel: 'alto', texto: a.replace(/[⚠️ℹ️]/g,'').trim() });
           else if (a.includes('ℹ️')) alertas.push({ nivel: 'info', texto: a.replace(/[⚠️ℹ️]/g,'').trim() });
         });
-
-        if (resultado.tipo === 'extrato_bancario') {
-          const taxa = resultado.totalEntradas > 0 ? resultado.totalSaidas / resultado.totalEntradas : 0;
-          if (taxa > 0.9) alertas.push({ nivel: 'alto', texto: 'Saídas comprometem mais de 90% das entradas — fluxo de caixa crítico.' });
-          else if (taxa > 0.75) alertas.push({ nivel: 'medio', texto: 'Saídas acima de 75% das entradas — atenção ao fluxo de caixa.' });
-          if (resultado.resultado < 0) alertas.push({ nivel: 'alto', texto: `Resultado negativo de ${fmt(Math.abs(resultado.resultado))} — déficit no período.` });
-          else if (resultado.resultado > 0) alertas.push({ nivel: 'ok', texto: `Resultado positivo de ${fmt(resultado.resultado)} no período.` });
-        }
       }
 
       if (cnpj && (cnpj.situacao||'').toUpperCase() !== 'ATIVA') {
@@ -372,193 +351,83 @@
 
       el.innerHTML = alertas.map(a => `
         <div class="alerta alerta-${a.nivel}">
-          <span class="alerta-icon">${{alto:'🔴',medio:'🟡',info:'🔵',ok:'🟢'}[a.nivel] || '🔵'}</span>
+          <span class="alerta-icon">${{alto:'🔴',medio:'🟡',info:'🔵',ok:'🟢'}[a.nivel]||'🔵'}</span>
           <span class="alerta-texto">${a.texto}</span>
         </div>`).join('');
     }
 
-    // Gráfico
-    function renderGrafico(resultado) {
-      const el = document.getElementById('painel-grafico');
-      if (!el || !resultado) {
-        if (el) el.innerHTML = '<p class="grafico-vazio">Sem dados financeiros para o gráfico.</p>';
+    // ── PAINEL DE CRÉDITOS ICMS (substitui gráfico de entradas/saídas) ──
+    function renderCreditosICMS(resultado) {
+      const el = document.getElementById('painel-creditos');
+      if (!el) return;
+
+      if (!resultado || resultado.tipo === 'extrato_bancario') {
+        el.innerHTML = '<p class="credito-vazio">Envie uma NF-e, CT-e ou SPED Fiscal para identificar créditos de ICMS.</p>';
         return;
       }
-      if (resultado.tipo !== 'extrato_bancario' && resultado.tipo !== 'nfse' && resultado.tipo !== 'nfe') {
-        el.innerHTML = '<p class="grafico-vazio">Gráfico disponível para extratos e notas fiscais.</p>';
+
+      const m = resultado.metricas || {};
+      const total = m.total_creditos || resultado.totalGeralCreditos || resultado.economiaIdentificada || 0;
+      const icms   = m.icms_insumos || 0;
+      const st     = m.icms_st || 0;
+      const difal  = m.difal || 0;
+      const ciap   = m.ciap || 0;
+
+      if (total <= 0) {
+        el.innerHTML = '<p class="credito-vazio">Nenhum crédito de ICMS identificado neste documento.</p>';
         return;
       }
-      const entradas = resultado.totalEntradas || resultado.meta?.valor_bruto || 0;
-      const saidas = resultado.totalSaidas || resultado.totalRetencoes || 0;
-      const max = Math.max(entradas, saidas, 1);
-      const pctE = Math.round((entradas / max) * 100);
-      const pctS = Math.round((saidas / max) * 100);
+
+      const row = (label, val, base) => val > 0 ? `
+        <div class="credito-row">
+          <span class="credito-tipo">${label}</span>
+          <div class="credito-bar-wrap">
+            <div class="credito-bar" style="width:${Math.round((val/total)*100)}%"></div>
+          </div>
+          <span class="credito-val">${fmt(val)}</span>
+          <span class="credito-base">${base}</span>
+        </div>` : '';
+
       el.innerHTML = `
-        <div class="grafico-wrap">
-          <div class="grafico-bars">
-            <div class="grafico-col">
-              <div class="grafico-val">${fmt(entradas)}</div>
-              <div class="grafico-bar-wrap"><div class="grafico-bar bar-entrada" style="height:${pctE}%"></div></div>
-              <div class="grafico-lbl">Entradas</div>
-            </div>
-            <div class="grafico-col">
-              <div class="grafico-val">${fmt(saidas)}</div>
-              <div class="grafico-bar-wrap"><div class="grafico-bar bar-saida" style="height:${pctS}%"></div></div>
-              <div class="grafico-lbl">Saídas</div>
-            </div>
-          </div>
-          <div class="grafico-resultado">
-            <span class="grafico-res-lbl">Resultado do período</span>
-            <span class="grafico-res-val ${(resultado.resultado||0) >= 0 ? 'res-pos' : 'res-neg'}">${fmt(resultado.resultado || (entradas - saidas))}</span>
-          </div>
+        <div class="credito-total">
+          <span class="credito-total-lbl">Total identificado</span>
+          <span class="credito-total-val">${fmt(total)}</span>
+        </div>
+        <div class="credito-rows">
+          ${row('ICMS Insumos', icms, 'Art. 20 LC 87/96')}
+          ${row('ICMS-ST', st, 'Art. 457 RICMS-MT')}
+          ${row('DIFAL', difal, 'Art. 155 §2 CF/88')}
+          ${row('CIAP', ciap, 'Art. 20 §5 LC 87/96')}
         </div>`;
     }
 
-    // ── CARD DE UPSELL (backend decide — frontend só exibe) ──
-    function renderUpsell(resultado) {
-      const wrap = document.getElementById('upsell-wrap');
-      if (!wrap) return;
-      const upsell = resultado?.upsell;
-      if (!upsell || !upsell.exibir) { wrap.style.display = 'none'; return; }
-
-      wrap.style.display = 'block';
-      wrap.innerHTML = `
-        <div class="upsell-card">
-          <div class="upsell-icon">🚀</div>
-          <div class="upsell-body">
-            <div class="upsell-titulo">Upgrade de Performance Disponível</div>
-            <div class="upsell-msg">${upsell.mensagem}</div>
-            <div class="upsell-btns">
-              <a href="https://wa.me/556593429981?text=Olá!%20Quero%20migrar%20para%20o%20Plano%20Ultra%20do%20Contábil%20Inteligente" target="_blank" class="upsell-btn-primary">Migrar para o Plano Ultra →</a>
-              <a href="https://wa.me/556593429981?text=Olá!%20Quero%20falar%20com%20um%20Auditor%20Técnico" target="_blank" class="upsell-btn-sec">Falar com Auditor Técnico</a>
-            </div>
-          </div>
-        </div>`;
-    }
-
-    // Tabela interativa com teaser para Plus (limite 10 linhas visíveis)
-    window._transacoes = [];
-    const LIMITE_LINHAS_PLUS = 10;
-
-    function renderTabela(resultado) {
-      const wrap = document.getElementById('painel-tabela-wrap');
-      if (!wrap) return;
-      if (!resultado || resultado.tipo !== 'extrato_bancario' || !resultado.transacoesClassificadas?.length) {
-        wrap.style.display = 'none'; return;
-      }
-      wrap.style.display = 'block';
-      window._transacoes = resultado.transacoesClassificadas.map((t, i) => ({ ...t, idx: i, ativo: true }));
-      atualizarTabela();
-    }
-
-    function atualizarTabela() {
-      const tbody = document.getElementById('tabela-body');
-      const teaserWrap = document.getElementById('tabela-teaser');
-      if (!tbody) return;
-
-      const plano = (window.APP.empresa.plano || '').toLowerCase();
-      const ehPlus = plano.includes('plus');
-      const ehUltra = plano.includes('ultra') || plano.includes('enterprise');
-      const total = window._transacoes.length;
-      // Plus vê 10 linhas; Ultra e demais veem tudo
-      const limite = ehPlus && !ehUltra ? LIMITE_LINHAS_PLUS : total;
-      const visiveis = window._transacoes.slice(0, limite);
-      const ocultas = total - limite;
-
-      tbody.innerHTML = visiveis.map(t => `
-        <tr class="${!t.ativo ? 'linha-inativa' : ''} linha-${t.classificacao}">
-          <td class="td-data">${t.data || '—'}</td>
-          <td class="td-desc">${t.descricao || '—'}</td>
-          <td class="td-classe">
-            <select class="sel-classe" onchange="alterarClasse(${t.idx}, this.value)" ${!t.ativo ? 'disabled' : ''}>
-              <option value="entrada" ${t.classificacao==='entrada'?'selected':''}>↑ Entrada</option>
-              <option value="saida" ${t.classificacao==='saida'?'selected':''}>↓ Saída</option>
-              <option value="saldo" ${t.classificacao==='saldo'?'selected':''}>= Saldo</option>
-            </select>
-          </td>
-          <td class="td-val ${t.classificacao==='entrada'?'val-entrada':t.classificacao==='saida'?'val-saida':'val-saldo'}">${fmt(Math.abs(t.valor))}</td>
-          <td class="td-acao">
-            <button class="btn-excluir ${!t.ativo?'btn-restaurar':''}" onclick="toggleLinha(${t.idx})">
-              ${t.ativo ? 'Excluir' : 'Restaurar'}
-            </button>
-          </td>
-        </tr>`).join('');
-
-      // Teaser — mostrar blur + CTA para Plus quando há linhas ocultas
-      if (teaserWrap) {
-        if (ocultas > 0 && ehPlus) {
-          teaserWrap.style.display = 'block';
-          document.getElementById('teaser-count').textContent = ocultas;
-        } else {
-          teaserWrap.style.display = 'none';
-        }
-      }
-
-      recalcular();
-    }
-
-    window.alterarClasse = (idx, novaClasse) => { window._transacoes[idx].classificacao = novaClasse; atualizarTabela(); };
-    window.toggleLinha = (idx) => { window._transacoes[idx].ativo = !window._transacoes[idx].ativo; atualizarTabela(); };
-
-    function recalcular() {
-      const ativas = window._transacoes.filter(t => t.ativo && t.classificacao !== 'saldo');
-      let entradas = 0, saidas = 0;
-      ativas.forEach(t => {
-        const v = Math.abs(parseFloat(t.valor) || 0);
-        if (t.classificacao === 'entrada') entradas += v;
-        else if (t.classificacao === 'saida') saidas += v;
-      });
-      const resultado = entradas - saidas;
-      const setEl = (id, val) => { const e = document.getElementById(id); if(e) e.textContent = val; };
-      setEl('recap-entradas', fmt(entradas));
-      setEl('recap-saidas', fmt(saidas));
-      setEl('recap-resultado', fmt(resultado));
-      const resEl = document.getElementById('recap-resultado');
-      if (resEl) resEl.className = 'recap-val ' + (resultado >= 0 ? 'res-pos' : 'res-neg');
-      // Atualiza gráfico em tempo real
-      const max = Math.max(entradas, saidas, 1);
-      const bE = document.querySelector('.bar-entrada');
-      const bS = document.querySelector('.bar-saida');
-      if (bE) bE.style.height = Math.round((entradas/max)*100) + '%';
-      if (bS) bS.style.height = Math.round((saidas/max)*100) + '%';
-      const vE = document.querySelector('.grafico-col:first-child .grafico-val');
-      const vS = document.querySelector('.grafico-col:last-child .grafico-val');
-      const rV = document.querySelector('.grafico-res-val');
-      if (vE) vE.textContent = fmt(entradas);
-      if (vS) vS.textContent = fmt(saidas);
-      if (rV) { rV.textContent = fmt(resultado); rV.className = 'grafico-res-val ' + (resultado >= 0 ? 'res-pos' : 'res-neg'); }
-    }
-
-    // ── TAXA DE SUCESSO + BLUR (blueprint §6) ──
-    function renderEconomia(resultado, texto) {
+    // ── CARD DE ECONOMIA + TAXA DE SUCESSO ──
+    function renderEconomia(resultado) {
       const wrap = document.getElementById('economia-wrap');
       if (!wrap) return;
 
-      // Tenta extrair economia do resultado ou do texto da IA
-      let economia = 0;
-      if (resultado && resultado.meta && resultado.meta.economia_fiscal_identificada) {
-        economia = parseFloat(resultado.meta.economia_fiscal_identificada) || 0;
-      }
-      if (!economia && texto) {
-        const m = texto.match(/economi[a][\s\S]{0,30}R\$\s*([\d.,]+)/i);
-        if (m) economia = parseFloat(m[1].replace(/\./g,'').replace(',','.')) || 0;
-      }
+      const m = resultado?.metricas || {};
+      const fe = resultado?.financeiro_exito || {};
+
+      let economia = m.total_creditos || resultado?.totalGeralCreditos || resultado?.economiaIdentificada || 0;
+      let honorarios = fe.valor_honorarios || calcularTaxaSucesso(economia);
+      let liquido = fe.valor_liquido_cliente || (economia - honorarios);
+      let aliquota = fe.porcentagem_efetiva || null;
 
       if (economia <= 0) { wrap.style.display = 'none'; return; }
 
-      const taxa = calcularTaxaSucesso(economia);
-      const pct = economia <= 5000 ? 5 : economia <= 20000 ? 3 : economia <= 100000 ? 2 : 1;
       wrap.style.display = 'block';
       window._economiaAtual = economia;
 
       document.getElementById('economia-valor').textContent = fmt(economia);
-      document.getElementById('economia-taxa-pct').textContent = `${pct}%`;
-      document.getElementById('economia-taxa-val').textContent = fmt(taxa);
-      document.getElementById('btn-desbloquear').textContent = `Desbloquear Guia de Recuperação — Taxa ${pct}%: ${fmt(taxa)}`;
+      document.getElementById('economia-taxa-pct').textContent = descricaoTaxa(economia);
+      document.getElementById('economia-taxa-val').textContent = fmt(honorarios);
+      document.getElementById('economia-liquido').textContent = fmt(liquido);
+      if (aliquota) document.getElementById('economia-aliquota').textContent = aliquota + '%';
+      document.getElementById('btn-desbloquear').textContent = `Desbloquear Guia de Recuperação SEFAZ-MT — Honorários: ${fmt(honorarios)}`;
     }
 
     window.desbloquearGuia = () => {
-      // Placeholder — integração Stripe/PagSeguro futura
       mostrarNotif('Redirecionando para pagamento... (integração em breve)');
     };
 
@@ -566,7 +435,7 @@
     function renderAnaliseTexto(texto) {
       const el = document.getElementById('painel-analise-texto');
       if (!el) return;
-      if (!texto) { el.innerHTML = '<p style="color:var(--cinza);font-size:0.85rem">Análise não disponível.</p>'; return; }
+      if (!texto) { el.innerHTML = '<p style="color:var(--slate);font-size:0.85rem">Laudo não disponível.</p>'; return; }
       el.innerHTML = texto
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/━+/g, '<hr class="sep">')
@@ -590,7 +459,7 @@
       msgs.appendChild(loadEl);
       msgs.scrollTop = msgs.scrollHeight;
       const estado = window.APP.estadoPainel;
-      const contexto = estado ? `\n\nCONTEXTO DO PAINEL:\n${JSON.stringify({ resultadoCalculo: estado.resultadoCalculo, dadosCNPJ: estado.dadosCNPJ }, null, 2)}\n\nANÁLISE:\n${(estado.respostaTexto||'').substring(0,600)}` : '';
+      const contexto = estado ? `\n\nCONTEXTO:\n${JSON.stringify({ resultadoCalculo: estado.resultadoCalculo, dadosCNPJ: estado.dadosCNPJ }, null, 2)}\n\nLAUDO:\n${(estado.respostaTexto||'').substring(0,600)}` : '';
       const messages = [{ role: 'user', content: txt + contexto }];
       let resposta = '';
       await fetchStream(
@@ -620,17 +489,17 @@
     async function salvar(pergunta, resposta, numArqs, resultado) {
       if (!window.APP.user) return;
       try {
-        const m = resposta.match(/R\$\s*([\d.,]+)/);
-        const econ = m ? parseFloat(m[1].replace(/\./g,'').replace(',','.')) : 0;
+        const economia = resultado?.metricas?.total_creditos || resultado?.economiaIdentificada || 0;
         await addDoc(collection(db,'analises'), {
           uid: window.APP.user.uid,
           empresa: window.APP.empresa.nomeEmpresa||'',
-          plano: window.APP.empresa.plano||'Básico',
+          plano: 'Ultra',
           pergunta: pergunta.substring(0,200),
           resposta: resposta.substring(0,2000),
           numArqs: numArqs||0,
-          economia: econ,
-          temRisco: resposta.toLowerCase().includes('risco')||resposta.includes('⚠️'),
+          economia,
+          temRisco: Array.isArray(resultado?.meta?.alertas_fiscais) &&
+            resultado.meta.alertas_fiscais.some(a => (a.nivel||'').toUpperCase() === 'ALTO'),
           data: new Date().toISOString(),
           mes: new Date().getMonth()+1,
           ano: new Date().getFullYear()
@@ -667,7 +536,7 @@
           <div class="hist-badges">
             ${a.numArqs>0?`<span class="badge badge-blue">${a.numArqs} arq.</span>`:''}
             ${a.economia>0?`<span class="badge badge-green">R$ ${a.economia.toLocaleString('pt-BR')}</span>`:''}
-            ${a.temRisco?`<span class="badge badge-red">Risco</span>`:''}
+            ${a.temRisco?`<span class="badge badge-red">Alerta</span>`:''}
           </div>
         </div>`).join('') || '<p class="empty">Nenhuma análise ainda.</p>';
     }
@@ -682,29 +551,31 @@
       const econ = mes.reduce((s,a) => s+(a.economia||0), 0);
       const docs = mes.reduce((s,a) => s+(a.numArqs||0), 0);
       const riscos = mes.filter(a => a.temRisco).length;
+      const honorarios = calcularTaxaSucesso(econ);
       const el = document.getElementById('rel-conteudo');
       if (!el) return;
       el.innerHTML = `
         <div class="rel-capa">
-          <div class="rel-marca">CONTÁBIL INTELIGENTE</div>
-          <div class="rel-periodo">Relatório — ${MESES[agora.getMonth()]} ${agora.getFullYear()}</div>
-          <div class="rel-cliente">${window.APP.empresa.nomeEmpresa||'Cliente'} · Plano ${window.APP.empresa.plano||'Básico'}</div>
+          <div class="rel-marca">CONTÁBIL INTELIGENTE · AUDITORIA ICMS</div>
+          <div class="rel-periodo">Laudo de Recuperação — ${MESES[agora.getMonth()]} ${agora.getFullYear()}</div>
+          <div class="rel-cliente">${window.APP.empresa.nomeEmpresa||'Cliente'} · Plano Ultra</div>
           <div class="rel-gerado">Gerado em ${new Date().toLocaleDateString('pt-BR')} · contabilinteligente.api.br</div>
         </div>
         <div class="rel-kpis">
-          <div class="rel-kpi"><div class="rel-kpi-num">${mes.length}</div><div class="rel-kpi-lbl">Análises</div></div>
+          <div class="rel-kpi"><div class="rel-kpi-num">${mes.length}</div><div class="rel-kpi-lbl">Auditorias</div></div>
           <div class="rel-kpi"><div class="rel-kpi-num">${docs}</div><div class="rel-kpi-lbl">Documentos</div></div>
-          <div class="rel-kpi accent"><div class="rel-kpi-num">R$ ${econ.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div><div class="rel-kpi-lbl">Economia</div></div>
+          <div class="rel-kpi accent"><div class="rel-kpi-num">R$ ${econ.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div><div class="rel-kpi-lbl">Créditos ICMS</div></div>
+          <div class="rel-kpi accent"><div class="rel-kpi-num">R$ ${honorarios.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div><div class="rel-kpi-lbl">Honorários</div></div>
           <div class="rel-kpi ${riscos>0?'danger':''}"><div class="rel-kpi-num">${riscos}</div><div class="rel-kpi-lbl">Alertas</div></div>
         </div>
         <div class="rel-sec">
-          <div class="rel-sec-titulo">Registros do Mês</div>
+          <div class="rel-sec-titulo">Auditorias do Mês</div>
           ${mes.slice(0,10).map(a => `
             <div class="rel-item">
               <div class="rel-item-data">${new Date(a.data).toLocaleDateString('pt-BR')}</div>
               <div class="rel-item-desc">${a.pergunta.substring(0,100)}…</div>
-              <div class="rel-item-info">${a.numArqs>0?`${a.numArqs} doc. · `:''}${a.economia>0?`R$ ${a.economia.toLocaleString('pt-BR')}`:''}${a.temRisco?' · ⚠ Alerta':''}</div>
-            </div>`).join('') || '<p class="empty">Nenhum registro este mês.</p>'}
+              <div class="rel-item-info">${a.numArqs>0?`${a.numArqs} doc. · `:''}${a.economia>0?`Crédito R$ ${a.economia.toLocaleString('pt-BR')}`:''}${a.temRisco?' · ⚠ Alerta':''}</div>
+            </div>`).join('') || '<p class="empty">Nenhuma auditoria este mês.</p>'}
         </div>`;
     };
 
@@ -718,26 +589,21 @@
       document.getElementById('menu-overlay').classList.remove('aberto');
     };
     window.navegarMenu = (tela) => { irParaTela(tela); fecharMenu(); };
-
   </script>
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      /* Design system oficial — blueprint §10 */
-      --azul:    #0F2544;
-      --verde:   #00875A;
-      --dourado: #F0B429;
-      --branco:  #FFFFFF;
-      --cinza-l: #F4F6F9;
-      /* Tokens de interface */
-      --ink:     #0F2544;
-      --ink-2:   #2C3E55;
-      --ink-3:   #617990;
-      --rule:    #DDE5EE;
-      --bg:      #F4F6F9;
-      --bg-2:    #E8EDF3;
+      --navy:    #0A1628;
+      --emerald: #047857;
+      --white:   #FFFFFF;
+      --ink:     #0F172A;
+      --ink-2:   #1E293B;
+      --ink-3:   #475569;
+      --rule:    #E2E8F0;
+      --bg:      #F0F4F8;
+      --bg-2:    #E2E8F0;
       --red:     #C0392B;
       --red-l:   #FDECEA;
       --amber:   #92400E;
@@ -745,316 +611,263 @@
       --blue-l:  #EBF4FF;
       --blue:    #1A56DB;
       --green-l: #E6F9F1;
+      --slate:   #64748B;
     }
 
-    html, body { height:100%; font-family:'Plus Jakarta Sans',sans-serif; background:var(--bg); color:var(--ink); overflow:hidden; }
+    html, body { height:100%; font-family:'Inter',sans-serif; background:var(--bg); color:var(--ink); overflow:hidden; -webkit-font-smoothing:antialiased; }
 
     /* ── LOGIN ── */
-    #tela-login { display:flex; height:100vh; align-items:stretch; background:var(--branco); }
-    .login-left { width:46%; background:var(--azul); display:flex; flex-direction:column; justify-content:space-between; padding:56px 64px; position:relative; overflow:hidden; }
-    .login-left::before { content:''; position:absolute; top:-100px; right:-100px; width:360px; height:360px; border:1px solid rgba(240,180,41,0.12); border-radius:50%; }
-    .login-left::after { content:''; position:absolute; bottom:-80px; left:-80px; width:260px; height:260px; border:1px solid rgba(255,255,255,0.05); border-radius:50%; }
-    .ll-marca { font-family:'Fraunces',serif; font-size:1.3rem; color:var(--branco); display:flex; align-items:center; gap:12px; position:relative; z-index:2; }
-    .ll-marca-icon { width:34px; height:34px; background:var(--dourado); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:17px; }
+    #tela-login { display:flex; height:100vh; align-items:stretch; background:var(--white); }
+    .login-left { width:46%; background:var(--navy); display:flex; flex-direction:column; justify-content:space-between; padding:56px 64px; position:relative; overflow:hidden; }
+    .login-left::before { content:''; position:absolute; top:-100px; right:-100px; width:360px; height:360px; border:1px solid rgba(4,120,87,0.12); border-radius:50%; }
+    .ll-marca { font-family:'DM Serif Display',serif; font-size:1.2rem; color:var(--white); display:flex; align-items:center; gap:12px; position:relative; z-index:2; }
+    .ll-marca-icon { width:32px; height:32px; background:var(--emerald); border-radius:6px; display:flex; align-items:center; justify-content:center; }
+    .ll-marca-icon svg { width:18px; height:18px; fill:none; stroke:#fff; stroke-width:2; }
     .ll-body { position:relative; z-index:2; }
-    .ll-headline { font-family:'Fraunces',serif; font-size:2.6rem; font-weight:700; color:var(--branco); line-height:1.12; margin-bottom:16px; }
-    .ll-headline em { color:var(--dourado); font-style:normal; }
-    .ll-desc { font-size:0.9rem; color:rgba(255,255,255,0.5); line-height:1.75; }
-    .ll-features { margin-top:30px; display:flex; flex-direction:column; gap:11px; }
-    .ll-feature { display:flex; align-items:center; gap:10px; font-size:0.82rem; color:rgba(255,255,255,0.65); }
-    .ll-dot { width:5px; height:5px; background:var(--dourado); border-radius:50%; flex-shrink:0; }
-    .ll-footer { font-size:0.7rem; color:rgba(255,255,255,0.2); font-family:'JetBrains Mono',monospace; position:relative; z-index:2; }
+    .ll-headline { font-family:'DM Serif Display',serif; font-size:2.4rem; font-weight:400; color:var(--white); line-height:1.15; margin-bottom:16px; letter-spacing:-0.02em; }
+    .ll-headline em { font-style:italic; color:#93C5FD; }
+    .ll-desc { font-size:0.88rem; color:rgba(255,255,255,0.45); line-height:1.75; font-weight:300; }
+    .ll-features { margin-top:28px; display:flex; flex-direction:column; gap:10px; }
+    .ll-feature { display:flex; align-items:center; gap:10px; font-size:0.8rem; color:rgba(255,255,255,0.55); }
+    .ll-dot { width:4px; height:4px; background:var(--emerald); border-radius:50%; flex-shrink:0; }
+    .ll-footer { font-size:0.68rem; color:rgba(255,255,255,0.18); font-family:'DM Mono',monospace; position:relative; z-index:2; }
     .login-right { flex:1; display:flex; align-items:center; justify-content:center; padding:48px; }
     .login-form { width:100%; max-width:360px; }
-    .lf-titulo { font-family:'Fraunces',serif; font-size:1.7rem; color:var(--ink); margin-bottom:6px; }
-    .lf-sub { font-size:0.84rem; color:var(--ink-3); margin-bottom:36px; }
+    .lf-titulo { font-family:'DM Serif Display',serif; font-size:1.6rem; color:var(--ink); margin-bottom:6px; }
+    .lf-sub { font-size:0.82rem; color:var(--slate); margin-bottom:36px; }
     .lf-label { display:block; font-size:0.68rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--ink-2); margin-bottom:7px; }
-    .lf-input { width:100%; border:1px solid var(--rule); background:var(--branco); padding:12px 14px; font-size:0.9rem; font-family:'Plus Jakarta Sans',sans-serif; color:var(--ink); outline:none; border-radius:4px; transition:border-color 0.2s; margin-bottom:16px; }
-    .lf-input:focus { border-color:var(--azul); }
-    .lf-btn { width:100%; background:var(--azul); color:var(--branco); font-family:'Plus Jakarta Sans',sans-serif; font-weight:600; font-size:0.88rem; padding:13px; border:none; border-radius:4px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; transition:background 0.2s; }
+    .lf-input { width:100%; border:1px solid var(--rule); background:var(--white); padding:12px 14px; font-size:0.9rem; font-family:'Inter',sans-serif; color:var(--ink); outline:none; border-radius:4px; transition:border-color 0.2s; margin-bottom:16px; }
+    .lf-input:focus { border-color:var(--navy); }
+    .lf-btn { width:100%; background:var(--navy); color:var(--white); font-family:'Inter',sans-serif; font-weight:600; font-size:0.88rem; padding:13px; border:none; border-radius:4px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; transition:background 0.2s; }
     .lf-btn:hover { background:var(--ink-2); }
     .lf-btn:disabled { opacity:0.6; cursor:not-allowed; }
     .lf-erro { display:none; font-size:0.79rem; color:var(--red); background:var(--red-l); border:1px solid #FECACA; padding:10px 13px; border-radius:4px; margin-top:12px; }
-    .lf-rodape { margin-top:24px; font-size:0.75rem; color:var(--ink-3); }
+    .lf-rodape { margin-top:24px; font-size:0.75rem; color:var(--slate); }
     .spinner { width:13px; height:13px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation:spin 0.7s linear infinite; display:inline-block; }
 
     /* ── APP SHELL ── */
     #tela-app { display:none; height:100vh; flex-direction:column; }
-    .topbar { height:54px; background:var(--branco); border-bottom:1px solid var(--rule); display:flex; align-items:center; padding:0 24px; gap:14px; flex-shrink:0; }
-    .tb-marca { font-family:'Fraunces',serif; font-size:1rem; color:var(--ink); display:flex; align-items:center; gap:9px; }
-    .tb-icon { width:26px; height:26px; background:var(--azul); border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:13px; }
-    .tb-div { width:1px; height:20px; background:var(--rule); margin:0 6px; }
-    .tb-sub { font-size:0.74rem; color:var(--ink-3); }
+    .topbar { height:54px; background:var(--navy); border-bottom:1px solid rgba(255,255,255,0.08); display:flex; align-items:center; padding:0 24px; gap:14px; flex-shrink:0; }
+    .tb-marca { font-family:'DM Serif Display',serif; font-size:1rem; color:var(--white); display:flex; align-items:center; gap:9px; }
+    .tb-icon { width:26px; height:26px; background:var(--emerald); border-radius:4px; display:flex; align-items:center; justify-content:center; }
+    .tb-icon svg { width:14px; height:14px; fill:none; stroke:#fff; stroke-width:2; }
+    .tb-div { width:1px; height:20px; background:rgba(255,255,255,0.12); margin:0 6px; }
+    .tb-sub { font-size:0.72rem; color:rgba(255,255,255,0.35); font-family:'DM Mono',monospace; }
     .tb-user { margin-left:auto; display:flex; align-items:center; gap:16px; }
     .tb-info { text-align:right; }
-    .tb-nome { font-size:0.82rem; font-weight:600; color:var(--ink); }
-    .tb-plano { font-size:0.64rem; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--verde); }
-    .tb-email { font-size:0.66rem; color:var(--ink-3); font-family:'JetBrains Mono',monospace; }
-    .tb-sair { font-size:0.75rem; color:var(--ink-3); background:none; border:1px solid var(--rule); padding:5px 12px; border-radius:4px; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif; transition:all 0.2s; }
-    .tb-sair:hover { border-color:var(--azul); color:var(--azul); }
+    .tb-nome { font-size:0.82rem; font-weight:600; color:var(--white); }
+    .tb-plano { font-size:0.62rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:#4ADE80; }
+    .tb-email { font-size:0.65rem; color:rgba(255,255,255,0.35); font-family:'DM Mono',monospace; }
+    .tb-sair { font-size:0.73rem; color:rgba(255,255,255,0.45); background:none; border:1px solid rgba(255,255,255,0.15); padding:5px 12px; border-radius:4px; cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.2s; }
+    .tb-sair:hover { border-color:rgba(255,255,255,0.4); color:var(--white); }
 
     .app-body { display:flex; flex:1; overflow:hidden; }
 
-    /* SIDEBAR */
-    .sidebar { width:208px; background:var(--branco); border-right:1px solid var(--rule); padding:18px 12px; flex-shrink:0; display:flex; flex-direction:column; gap:2px; }
-    .nav-grupo { font-size:0.62rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-3); padding:8px 12px 5px; margin-top:6px; }
-    .nav-btn { display:flex; align-items:center; gap:9px; padding:9px 12px; border-radius:4px; font-size:0.83rem; color:var(--ink-2); cursor:pointer; transition:all 0.15s; border:none; background:none; width:100%; text-align:left; font-family:'Plus Jakarta Sans',sans-serif; }
+    .sidebar { width:208px; background:var(--white); border-right:1px solid var(--rule); padding:18px 12px; flex-shrink:0; display:flex; flex-direction:column; gap:2px; }
+    .nav-grupo { font-size:0.62rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--slate); padding:8px 12px 5px; margin-top:6px; }
+    .nav-btn { display:flex; align-items:center; gap:9px; padding:9px 12px; border-radius:4px; font-size:0.83rem; color:var(--ink-2); cursor:pointer; transition:all 0.15s; border:none; background:none; width:100%; text-align:left; font-family:'Inter',sans-serif; }
     .nav-btn:hover { background:var(--bg); color:var(--ink); }
-    .nav-btn.ativo { background:var(--azul); color:var(--branco); font-weight:500; }
+    .nav-btn.ativo { background:var(--navy); color:var(--white); font-weight:500; }
     .nav-btn .icon { font-size:13px; }
 
     .main { flex:1; overflow:hidden; position:relative; }
 
     /* ── TELA UPLOAD ── */
     #tela-upload { display:flex; align-items:center; justify-content:center; height:100%; background:var(--bg); }
-    .upload-card { background:var(--branco); border:1px solid var(--rule); border-radius:10px; padding:44px 52px; width:100%; max-width:560px; box-shadow:0 4px 24px rgba(15,37,68,0.07); }
-    .upload-titulo { font-family:'Fraunces',serif; font-size:1.5rem; color:var(--ink); margin-bottom:6px; }
-    .upload-sub { font-size:0.84rem; color:var(--ink-3); margin-bottom:28px; line-height:1.65; }
+    .upload-card { background:var(--white); border:1px solid var(--rule); border-radius:10px; padding:44px 52px; width:100%; max-width:580px; box-shadow:0 4px 24px rgba(10,22,40,0.08); }
+    .upload-titulo { font-family:'DM Serif Display',serif; font-size:1.5rem; color:var(--ink); margin-bottom:6px; }
+    .upload-sub { font-size:0.84rem; color:var(--slate); margin-bottom:28px; line-height:1.65; font-weight:300; }
     .dropzone { border:2px dashed var(--rule); border-radius:8px; padding:34px 24px; text-align:center; cursor:pointer; transition:all 0.2s; background:var(--bg); }
-    .dropzone:hover, .dropzone.drag { border-color:var(--azul); background:var(--bg-2); }
-    .dz-icon { font-size:2rem; margin-bottom:10px; }
+    .dropzone:hover, .dropzone.drag { border-color:var(--emerald); background:var(--bg-2); }
+    .dz-icon { font-size:1.8rem; margin-bottom:10px; opacity:0.5; }
     .dz-title { font-size:0.9rem; font-weight:600; color:var(--ink); margin-bottom:4px; }
-    .dz-sub { font-size:0.77rem; color:var(--ink-3); }
-    .dz-sub strong { color:var(--blue); }
+    .dz-sub { font-size:0.77rem; color:var(--slate); }
+    .dz-tipos { margin-top:8px; display:flex; justify-content:center; gap:6px; flex-wrap:wrap; }
+    .dz-tipo-tag { font-family:'DM Mono',monospace; font-size:0.65rem; background:var(--bg-2); border:1px solid var(--rule); color:var(--ink-3); padding:2px 8px; border-radius:3px; }
     #chips-upload { display:none; flex-wrap:wrap; gap:7px; margin-top:12px; }
-    .chip { display:flex; align-items:center; gap:6px; background:var(--bg-2); border:1px solid var(--rule); border-radius:4px; padding:4px 10px; font-size:0.73rem; color:var(--ink-2); font-family:'JetBrains Mono',monospace; }
-    .chip-tipo { font-weight:600; color:var(--azul); }
+    .chip { display:flex; align-items:center; gap:6px; background:var(--bg-2); border:1px solid var(--rule); border-radius:4px; padding:4px 10px; font-size:0.73rem; color:var(--ink-2); font-family:'DM Mono',monospace; }
+    .chip-tipo { font-weight:600; color:var(--navy); }
     .chip-nome { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .chip button { background:none; border:none; color:var(--ink-3); cursor:pointer; font-size:1rem; padding:0 2px; line-height:1; }
-    .upload-instrucao { width:100%; border:1px solid var(--rule); border-radius:4px; padding:10px 13px; font-size:0.84rem; font-family:'Plus Jakarta Sans',sans-serif; color:var(--ink); resize:none; outline:none; background:var(--bg); margin-top:14px; transition:border-color 0.2s; }
-    .upload-instrucao:focus { border-color:var(--azul); background:var(--branco); }
+    .chip button { background:none; border:none; color:var(--slate); cursor:pointer; font-size:1rem; padding:0 2px; line-height:1; }
+    .upload-instrucao { width:100%; border:1px solid var(--rule); border-radius:4px; padding:10px 13px; font-size:0.84rem; font-family:'Inter',sans-serif; color:var(--ink); resize:none; outline:none; background:var(--bg); margin-top:14px; transition:border-color 0.2s; }
+    .upload-instrucao:focus { border-color:var(--navy); background:var(--white); }
     .upload-meta { display:flex; align-items:center; justify-content:space-between; margin-top:10px; }
-    .upload-lim { font-size:0.7rem; color:var(--ink-3); font-family:'JetBrains Mono',monospace; }
-    .btn-analisar { background:var(--verde); color:var(--branco); font-family:'Plus Jakarta Sans',sans-serif; font-weight:600; font-size:0.87rem; padding:12px 30px; border:none; border-radius:4px; cursor:pointer; transition:background 0.2s; }
-    .btn-analisar:hover:not(:disabled) { background:#006B47; }
+    .upload-lim { font-size:0.68rem; color:var(--slate); font-family:'DM Mono',monospace; }
+    .btn-analisar { background:var(--emerald); color:var(--white); font-family:'Inter',sans-serif; font-weight:600; font-size:0.87rem; padding:12px 30px; border:none; border-radius:4px; cursor:pointer; transition:background 0.2s; }
+    .btn-analisar:hover:not(:disabled) { background:#065F46; }
     .btn-analisar:disabled { opacity:0.4; cursor:not-allowed; }
     input[type=file] { display:none; }
 
     /* ── TELA PROCESSANDO ── */
     #tela-processando { display:none; align-items:center; justify-content:center; height:100%; background:var(--bg); flex-direction:column; }
-    .loading-card { background:var(--branco); border:1px solid var(--rule); border-radius:10px; padding:48px 52px; width:100%; max-width:460px; text-align:center; box-shadow:0 4px 24px rgba(15,37,68,0.07); }
-    .loading-icon { font-size:2.2rem; margin-bottom:18px; animation:pulse 1.8s ease infinite; }
-    .loading-titulo { font-family:'Fraunces',serif; font-size:1.2rem; color:var(--ink); margin-bottom:6px; }
-    .loading-msg { font-size:0.8rem; color:var(--ink-3); margin-bottom:26px; min-height:20px; font-family:'JetBrains Mono',monospace; }
-    .loading-bg { background:var(--bg-2); border-radius:8px; height:6px; overflow:hidden; }
-    .loading-bar { height:100%; background:linear-gradient(90deg, var(--azul) 0%, var(--verde) 100%); border-radius:8px; width:5%; transition:width 0.9s ease; }
+    .loading-card { background:var(--white); border:1px solid var(--rule); border-radius:10px; padding:48px 52px; width:100%; max-width:460px; text-align:center; box-shadow:0 4px 24px rgba(10,22,40,0.07); }
+    .loading-icon { font-size:2rem; margin-bottom:18px; animation:pulse 1.8s ease infinite; opacity:0.7; }
+    .loading-titulo { font-family:'DM Serif Display',serif; font-size:1.2rem; color:var(--ink); margin-bottom:6px; }
+    .loading-msg { font-size:0.78rem; color:var(--slate); margin-bottom:26px; min-height:20px; font-family:'DM Mono',monospace; }
+    .loading-bg { background:var(--bg-2); border-radius:8px; height:4px; overflow:hidden; }
+    .loading-bar { height:100%; background:linear-gradient(90deg, var(--navy) 0%, var(--emerald) 100%); border-radius:8px; width:5%; transition:width 0.9s ease; }
 
     /* ── TELA PAINEL ── */
     #tela-painel { display:none; height:100%; overflow-y:auto; background:var(--bg); padding:22px; }
-
     .painel-topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; flex-wrap:wrap; gap:10px; }
-    .painel-titulo { font-family:'Fraunces',serif; font-size:1.3rem; color:var(--ink); }
-    .btn-nova { background:none; border:1px solid var(--rule); color:var(--ink-2); font-family:'Plus Jakarta Sans',sans-serif; font-size:0.81rem; padding:8px 16px; border-radius:4px; cursor:pointer; transition:all 0.15s; display:flex; align-items:center; gap:6px; }
-    .btn-nova:hover { border-color:var(--azul); color:var(--azul); background:var(--branco); }
+    .painel-titulo { font-family:'DM Serif Display',serif; font-size:1.3rem; color:var(--ink); }
+    .btn-nova { background:none; border:1px solid var(--rule); color:var(--ink-2); font-family:'Inter',sans-serif; font-size:0.81rem; padding:8px 16px; border-radius:4px; cursor:pointer; transition:all 0.15s; }
+    .btn-nova:hover { border-color:var(--navy); color:var(--navy); background:var(--white); }
 
     /* Card empresa */
-    .card-empresa { background:var(--branco); border:1px solid var(--rule); border-radius:8px; padding:14px 18px; display:flex; align-items:center; gap:14px; margin-bottom:16px; }
-    .pe-icon { font-size:1.7rem; flex-shrink:0; }
+    .card-empresa { background:var(--white); border:1px solid var(--rule); border-radius:8px; padding:14px 18px; display:flex; align-items:center; gap:14px; margin-bottom:16px; }
+    .pe-icon { font-size:1.5rem; flex-shrink:0; }
     .pe-info { flex:1; min-width:0; }
-    .pe-nome { font-family:'Fraunces',serif; font-size:1rem; font-weight:600; color:var(--ink); margin-bottom:2px; }
-    .pe-razao { font-size:0.73rem; color:var(--ink-3); margin-bottom:6px; }
+    .pe-nome { font-family:'DM Serif Display',serif; font-size:1rem; font-weight:400; color:var(--ink); margin-bottom:2px; }
+    .pe-razao { font-size:0.73rem; color:var(--slate); margin-bottom:6px; }
     .pe-meta { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:4px; }
-    .pe-tag { font-size:0.67rem; font-weight:600; padding:2px 8px; border-radius:20px; }
-    .pe-cnpj { background:var(--bg-2); color:var(--ink-2); font-family:'JetBrains Mono',monospace; }
+    .pe-tag { font-size:0.65rem; font-weight:600; padding:2px 8px; border-radius:20px; }
+    .pe-cnpj { background:var(--bg-2); color:var(--ink-2); font-family:'DM Mono',monospace; }
     .pe-regime { background:var(--blue-l); color:var(--blue); }
-    .pe-porte { background:#FFF8E1; color:#8A6000; }
-    .pe-ativo { background:var(--green-l); color:var(--verde); }
+    .pe-porte { background:var(--amber-l); color:var(--amber); }
+    .pe-ativo { background:var(--green-l); color:var(--emerald); }
     .pe-inativo { background:var(--red-l); color:var(--red); }
-    .pe-local { font-size:0.72rem; color:var(--ink-3); }
+    .pe-local { font-size:0.71rem; color:var(--slate); }
 
     /* Grid painel */
     .painel-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
-    .painel-card { background:var(--branco); border:1px solid var(--rule); border-radius:8px; overflow:hidden; }
-    .painel-card-header { padding:11px 15px; border-bottom:1px solid var(--rule); font-size:0.7rem; font-weight:600; letter-spacing:0.09em; text-transform:uppercase; color:var(--ink-3); background:var(--bg); }
+    .painel-card { background:var(--white); border:1px solid var(--rule); border-radius:8px; overflow:hidden; }
+    .painel-card-header { padding:11px 15px; border-bottom:1px solid var(--rule); font-size:0.68rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--slate); background:var(--bg); }
 
     /* Alertas */
     .alertas-lista { padding:10px; display:flex; flex-direction:column; gap:7px; }
-    .alerta { display:flex; align-items:flex-start; gap:9px; padding:9px 11px; border-radius:6px; font-size:0.8rem; line-height:1.5; }
+    .alerta { display:flex; align-items:flex-start; gap:9px; padding:9px 11px; border-radius:6px; font-size:0.79rem; line-height:1.5; }
     .alerta-alto { background:var(--red-l); color:var(--red); }
     .alerta-medio { background:var(--amber-l); color:var(--amber); }
     .alerta-info { background:var(--blue-l); color:var(--blue); }
-    .alerta-ok { background:var(--green-l); color:var(--verde); }
+    .alerta-ok { background:var(--green-l); color:var(--emerald); }
     .alerta-icon { flex-shrink:0; }
 
-    /* Gráfico */
-    .grafico-wrap { padding:18px 14px; }
-    .grafico-bars { display:flex; justify-content:center; gap:36px; align-items:flex-end; height:130px; margin-bottom:12px; }
-    .grafico-col { display:flex; flex-direction:column; align-items:center; gap:5px; width:68px; }
-    .grafico-val { font-family:'JetBrains Mono',monospace; font-size:0.7rem; font-weight:500; color:var(--ink); text-align:center; }
-    .grafico-bar-wrap { flex:1; width:100%; display:flex; align-items:flex-end; }
-    .grafico-bar { width:100%; border-radius:4px 4px 0 0; transition:height 0.5s ease; min-height:4px; }
-    .bar-entrada { background:linear-gradient(180deg,#34D399,var(--verde)); }
-    .bar-saida { background:linear-gradient(180deg,#F87171,var(--red)); }
-    .grafico-lbl { font-size:0.68rem; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.06em; }
-    .grafico-resultado { display:flex; align-items:center; justify-content:space-between; padding-top:10px; border-top:1px solid var(--rule); }
-    .grafico-res-lbl { font-size:0.72rem; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.06em; }
-    .grafico-res-val { font-family:'JetBrains Mono',monospace; font-size:0.98rem; font-weight:600; transition:color 0.3s; }
-    .grafico-vazio { padding:28px 14px; text-align:center; font-size:0.8rem; color:var(--ink-3); }
-    .res-pos { color:var(--verde); }
-    .res-neg { color:var(--red); }
+    /* ── PAINEL DE CRÉDITOS ICMS ── */
+    .credito-vazio { padding:24px 16px; text-align:center; font-size:0.8rem; color:var(--slate); }
+    .credito-total { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--rule); background:var(--bg); }
+    .credito-total-lbl { font-size:0.7rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--slate); }
+    .credito-total-val { font-family:'DM Mono',monospace; font-size:1.15rem; font-weight:500; color:var(--emerald); }
+    .credito-rows { padding:12px 16px; display:flex; flex-direction:column; gap:10px; }
+    .credito-row { display:grid; grid-template-columns:100px 1fr 90px 90px; align-items:center; gap:10px; }
+    .credito-tipo { font-size:0.75rem; font-weight:600; color:var(--ink-2); }
+    .credito-bar-wrap { height:6px; background:var(--bg-2); border-radius:3px; overflow:hidden; }
+    .credito-bar { height:100%; background:var(--emerald); border-radius:3px; transition:width 0.5s ease; }
+    .credito-val { font-family:'DM Mono',monospace; font-size:0.78rem; color:var(--emerald); font-weight:500; text-align:right; }
+    .credito-base { font-family:'DM Mono',monospace; font-size:0.62rem; color:var(--slate); }
 
-    /* Tabela interativa */
-    .painel-tabela-full { background:var(--branco); border:1px solid var(--rule); border-radius:8px; overflow:hidden; margin-bottom:16px; }
-    .tabela-scroll { overflow-x:auto; }
-    table { width:100%; border-collapse:collapse; font-size:0.8rem; }
-    thead th { background:var(--bg); padding:9px 12px; text-align:left; font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.07em; color:var(--ink-3); border-bottom:1px solid var(--rule); white-space:nowrap; }
-    tbody td { padding:8px 12px; border-bottom:1px solid var(--rule); color:var(--ink-2); vertical-align:middle; }
-    tbody tr:last-child td { border-bottom:none; }
-    tbody tr:hover { background:var(--bg); }
-    .linha-inativa td { opacity:0.38; text-decoration:line-through; }
-    .td-data { font-family:'JetBrains Mono',monospace; font-size:0.72rem; white-space:nowrap; color:var(--ink-3); }
-    .td-desc { max-width:220px; }
-    .td-val { font-family:'JetBrains Mono',monospace; font-weight:600; white-space:nowrap; text-align:right; }
-    .val-entrada { color:var(--verde); }
-    .val-saida { color:var(--red); }
-    .val-saldo { color:var(--ink-3); }
-    .sel-classe { border:1px solid var(--rule); border-radius:4px; padding:3px 7px; font-size:0.73rem; font-family:'Plus Jakarta Sans',sans-serif; color:var(--ink); background:var(--branco); outline:none; cursor:pointer; }
-    .btn-excluir { background:none; border:1px solid var(--rule); color:var(--ink-3); font-size:0.7rem; padding:3px 9px; border-radius:4px; cursor:pointer; transition:all 0.15s; font-family:'Plus Jakarta Sans',sans-serif; white-space:nowrap; }
-    .btn-excluir:hover { border-color:var(--red); color:var(--red); background:var(--red-l); }
-    .btn-restaurar { border-color:var(--verde); color:var(--verde); }
-    .btn-restaurar:hover { background:var(--green-l); }
-    .recap { display:flex; align-items:center; gap:20px; padding:12px 14px; background:var(--bg); border-top:1px solid var(--rule); flex-wrap:wrap; }
-    .recap-item { display:flex; flex-direction:column; gap:2px; }
-    .recap-lbl { font-size:0.63rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); }
-    .recap-val { font-family:'JetBrains Mono',monospace; font-size:0.92rem; font-weight:600; color:var(--ink); transition:color 0.3s; }
-    .recap-divider { width:1px; height:26px; background:var(--rule); }
-    .recap-rt { margin-left:auto; font-size:0.68rem; color:var(--ink-3); font-family:'JetBrains Mono',monospace; }
-
-    /* ── ECONOMIA FISCAL + BLUR (blueprint §6) ── */
-    #economia-wrap { display:none; background:var(--branco); border:1px solid var(--dourado); border-radius:8px; overflow:hidden; margin-bottom:16px; }
-    .economia-header { background:linear-gradient(135deg,var(--azul),#1A3A6E); padding:14px 18px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
-    .economia-titulo { font-family:'Fraunces',serif; font-size:1rem; color:var(--branco); }
-    .economia-valor { font-family:'JetBrains Mono',monospace; font-size:1.2rem; font-weight:600; color:var(--dourado); }
-    .economia-body { padding:16px 18px; }
-    .economia-blur-wrap { position:relative; }
-    .economia-blur-conteudo { filter:blur(5px); user-select:none; pointer-events:none; font-size:0.82rem; color:var(--ink-2); line-height:1.8; padding:8px 0; }
-    .economia-blur-overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
-    .economia-desc { font-size:0.82rem; color:var(--ink-3); margin-bottom:4px; }
-    .btn-desbloquear { background:var(--dourado); color:var(--azul); font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; font-size:0.84rem; padding:12px 20px; border:none; border-radius:6px; cursor:pointer; transition:all 0.2s; text-align:center; }
-    .btn-desbloquear:hover { background:#D4A017; transform:translateY(-1px); box-shadow:0 4px 12px rgba(240,180,41,0.3); }
-    .economia-taxa { font-size:0.72rem; color:var(--ink-3); text-align:center; }
-
-    /* ── CARD UPSELL ── */
-    .upsell-card { display:flex; align-items:flex-start; gap:14px; background:linear-gradient(135deg,#1E1B4B,#312E81); border:1px solid #4F46E5; border-radius:10px; padding:18px 20px; }
-    .upsell-icon { font-size:1.6rem; flex-shrink:0; }
-    .upsell-body { flex:1; min-width:0; }
-    .upsell-titulo { font-size:0.72rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#A5B4FC; margin-bottom:6px; }
-    .upsell-msg { font-size:0.82rem; color:rgba(255,255,255,0.85); line-height:1.55; margin-bottom:12px; }
-    .upsell-btns { display:flex; gap:8px; flex-wrap:wrap; }
-    .upsell-btn-primary { background:#fff; color:#312E81; font-size:0.78rem; font-weight:700; padding:8px 16px; border-radius:6px; text-decoration:none; transition:all 0.2s; white-space:nowrap; }
-    .upsell-btn-primary:hover { background:#EEF2FF; transform:translateY(-1px); }
-    .upsell-btn-sec { background:rgba(79,70,229,0.3); color:#C7D2FE; font-size:0.78rem; font-weight:500; padding:8px 14px; border-radius:6px; text-decoration:none; border:1px solid rgba(99,102,241,0.4); transition:all 0.2s; white-space:nowrap; }
-    .upsell-btn-sec:hover { background:rgba(79,70,229,0.5); }
-
-    /* ── TEASER DA TABELA ── */
-    .teaser-blur { padding:8px 12px; pointer-events:none; user-select:none; }
-    .teaser-row { height:36px; background:linear-gradient(90deg, var(--bg-2) 25%, var(--rule) 50%, var(--bg-2) 75%); border-radius:4px; margin-bottom:4px; filter:blur(3px); opacity:0.5; }
-    .teaser-row-sm { width:60%; }
-    .teaser-cta { display:flex; align-items:center; gap:14px; padding:14px 16px; background:linear-gradient(135deg,#1E1B4B,#312E81); flex-wrap:wrap; }
-    .teaser-cta-icon { font-size:1.3rem; flex-shrink:0; }
-    .teaser-cta-texto { flex:1; font-size:0.8rem; color:rgba(255,255,255,0.8); line-height:1.5; min-width:180px; }
-    .teaser-cta-texto strong { color:#fff; }
-    .teaser-btn { background:var(--dourado); color:var(--azul); font-size:0.78rem; font-weight:700; padding:9px 18px; border-radius:6px; text-decoration:none; white-space:nowrap; transition:all 0.2s; flex-shrink:0; }
-    .teaser-btn:hover { background:#D4A017; transform:translateY(-1px); }
+    /* ── CARD ECONOMIA / TAXA DE SUCESSO ── */
+    #economia-wrap { display:none; background:var(--navy); border-radius:8px; overflow:hidden; margin-bottom:16px; }
+    .economia-header { padding:16px 20px; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+    .economia-titulo { font-family:'DM Serif Display',serif; font-size:1rem; color:var(--white); }
+    .economia-valor { font-family:'DM Mono',monospace; font-size:1.3rem; font-weight:500; color:#4ADE80; }
+    .economia-body { padding:16px 20px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+    .economia-item { }
+    .economia-item-lbl { font-size:0.63rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:rgba(255,255,255,0.3); margin-bottom:4px; }
+    .economia-item-val { font-family:'DM Mono',monospace; font-size:0.95rem; color:var(--white); }
+    .economia-item-val.green { color:#4ADE80; }
+    .economia-item-val.amber { color:#FCD34D; }
+    .economia-footer { padding:14px 20px; border-top:1px solid rgba(255,255,255,0.08); }
+    .btn-desbloquear { width:100%; background:var(--emerald); color:var(--white); font-family:'Inter',sans-serif; font-weight:600; font-size:0.84rem; padding:12px 20px; border:none; border-radius:5px; cursor:pointer; transition:all 0.2s; text-align:center; }
+    .btn-desbloquear:hover { background:#065F46; transform:translateY(-1px); }
+    .economia-nota { margin-top:8px; font-size:0.7rem; color:rgba(255,255,255,0.22); text-align:center; font-family:'DM Mono',monospace; }
 
     /* Análise textual */
-    .painel-analise { background:var(--branco); border:1px solid var(--rule); border-radius:8px; overflow:hidden; margin-bottom:16px; }
-    .analise-body { padding:18px; font-size:0.84rem; line-height:1.78; color:var(--ink-2); }
+    .painel-analise { background:var(--white); border:1px solid var(--rule); border-radius:8px; overflow:hidden; margin-bottom:16px; }
+    .analise-body { padding:18px; font-size:0.83rem; line-height:1.78; color:var(--ink-2); }
     .analise-body strong { color:var(--ink); font-weight:600; }
     .analise-body hr.sep { border:none; border-top:1px solid var(--rule); margin:10px 0; }
 
     /* Chat inferior */
-    .painel-chat { background:var(--branco); border:1px solid var(--rule); border-radius:8px; overflow:hidden; margin-bottom:24px; }
+    .painel-chat { background:var(--white); border:1px solid var(--rule); border-radius:8px; overflow:hidden; margin-bottom:24px; }
     .chat-msgs-wrap { max-height:260px; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:9px; background:#EEF2F7; }
     .cp-msg { display:flex; }
     .cp-user { justify-content:flex-end; }
     .cp-bot { justify-content:flex-start; }
     .cp-bubble { max-width:82%; padding:9px 13px; border-radius:14px; font-size:0.82rem; line-height:1.6; }
-    .cp-user .cp-bubble { background:var(--azul); color:rgba(255,255,255,0.92); border-radius:14px 14px 4px 14px; }
-    .cp-bot .cp-bubble { background:var(--branco); border:1px solid var(--rule); color:var(--ink-2); border-radius:14px 14px 14px 4px; }
+    .cp-user .cp-bubble { background:var(--navy); color:rgba(255,255,255,0.9); border-radius:14px 14px 4px 14px; }
+    .cp-bot .cp-bubble { background:var(--white); border:1px solid var(--rule); color:var(--ink-2); border-radius:14px 14px 14px 4px; }
     .cp-loading { display:flex; gap:5px; align-items:center; }
-    .cp-loading span { width:6px; height:6px; background:var(--ink-3); border-radius:50%; animation:bounce 1.2s infinite; }
+    .cp-loading span { width:6px; height:6px; background:var(--slate); border-radius:50%; animation:bounce 1.2s infinite; }
     .cp-loading span:nth-child(2) { animation-delay:0.2s; }
     .cp-loading span:nth-child(3) { animation-delay:0.4s; }
     .chat-input-row { display:flex; gap:8px; padding:11px 14px; border-top:1px solid var(--rule); }
-    .cp-input { flex:1; border:1px solid var(--rule); border-radius:4px; padding:8px 12px; font-size:0.83rem; font-family:'Plus Jakarta Sans',sans-serif; color:var(--ink); resize:none; outline:none; background:var(--bg); max-height:80px; }
-    .cp-input:focus { border-color:var(--azul); background:var(--branco); }
-    .cp-enviar { background:var(--azul); color:var(--branco); border:none; border-radius:4px; padding:8px 18px; font-size:0.81rem; font-family:'Plus Jakarta Sans',sans-serif; font-weight:600; cursor:pointer; white-space:nowrap; }
+    .cp-input { flex:1; border:1px solid var(--rule); border-radius:4px; padding:8px 12px; font-size:0.83rem; font-family:'Inter',sans-serif; color:var(--ink); resize:none; outline:none; background:var(--bg); max-height:80px; }
+    .cp-input:focus { border-color:var(--navy); background:var(--white); }
+    .cp-enviar { background:var(--navy); color:var(--white); border:none; border-radius:4px; padding:8px 18px; font-size:0.81rem; font-family:'Inter',sans-serif; font-weight:600; cursor:pointer; white-space:nowrap; }
     .cp-enviar:hover { background:var(--ink-2); }
 
     /* Dashboard */
     #tela-dashboard { display:none; height:100%; overflow-y:auto; padding:24px; background:var(--bg); }
-    .dash-titulo { font-family:'Fraunces',serif; font-size:1.35rem; color:var(--ink); margin-bottom:4px; }
-    .dash-sub { font-size:0.8rem; color:var(--ink-3); margin-bottom:20px; }
+    .dash-titulo { font-family:'DM Serif Display',serif; font-size:1.35rem; color:var(--ink); margin-bottom:4px; }
+    .dash-sub { font-size:0.8rem; color:var(--slate); margin-bottom:20px; }
     .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule); border-radius:8px; overflow:hidden; margin-bottom:18px; }
-    .kpi { background:var(--branco); padding:18px 16px; }
-    .kpi-icon { font-size:15px; margin-bottom:8px; opacity:0.5; }
-    .kpi-num { font-family:'JetBrains Mono',monospace; font-size:1.55rem; font-weight:500; color:var(--ink); line-height:1; }
-    .kpi-lbl { font-size:0.68rem; color:var(--ink-3); margin-top:4px; text-transform:uppercase; letter-spacing:0.06em; }
-    .panel { background:var(--branco); border:1px solid var(--rule); border-radius:8px; overflow:hidden; margin-bottom:16px; }
-    .panel-header { padding:12px 16px; border-bottom:1px solid var(--rule); font-size:0.75rem; font-weight:600; color:var(--ink); text-transform:uppercase; letter-spacing:0.07em; }
+    .kpi { background:var(--white); padding:18px 16px; }
+    .kpi-num { font-family:'DM Mono',monospace; font-size:1.55rem; font-weight:500; color:var(--ink); line-height:1; }
+    .kpi-lbl { font-size:0.68rem; color:var(--slate); margin-top:4px; text-transform:uppercase; letter-spacing:0.06em; }
+    .panel { background:var(--white); border:1px solid var(--rule); border-radius:8px; overflow:hidden; margin-bottom:16px; }
+    .panel-header { padding:12px 16px; border-bottom:1px solid var(--rule); font-size:0.72rem; font-weight:600; color:var(--ink); text-transform:uppercase; letter-spacing:0.07em; }
     .hist-row { display:flex; align-items:center; gap:12px; padding:10px 16px; border-bottom:1px solid var(--rule); }
     .hist-row:last-child { border-bottom:none; }
-    .hist-data { font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:var(--ink-3); white-space:nowrap; }
+    .hist-data { font-family:'DM Mono',monospace; font-size:0.7rem; color:var(--slate); white-space:nowrap; }
     .hist-desc { flex:1; font-size:0.8rem; color:var(--ink-2); }
     .hist-badges { display:flex; gap:5px; flex-wrap:wrap; }
     .badge { font-size:0.66rem; font-weight:600; padding:2px 7px; border-radius:3px; }
     .badge-blue { background:var(--blue-l); color:var(--blue); }
-    .badge-green { background:var(--green-l); color:var(--verde); }
+    .badge-green { background:var(--green-l); color:var(--emerald); }
     .badge-red { background:var(--red-l); color:var(--red); }
-    .empty { padding:18px 16px; font-size:0.8rem; color:var(--ink-3); text-align:center; }
+    .empty { padding:18px 16px; font-size:0.8rem; color:var(--slate); text-align:center; }
 
     /* Relatório */
     #tela-relatorio { display:none; height:100%; overflow-y:auto; padding:24px; background:var(--bg); }
-    .rel-page { background:var(--branco); border:1px solid var(--rule); border-radius:8px; overflow:hidden; }
-    .rel-capa { background:var(--azul); padding:30px; color:var(--branco); }
-    .rel-marca { font-size:0.66rem; font-weight:600; letter-spacing:0.15em; text-transform:uppercase; color:rgba(255,255,255,0.3); margin-bottom:10px; font-family:'JetBrains Mono',monospace; }
-    .rel-periodo { font-family:'Fraunces',serif; font-size:1.5rem; color:var(--branco); margin-bottom:5px; }
-    .rel-cliente { font-size:0.84rem; color:rgba(255,255,255,0.5); }
-    .rel-gerado { font-size:0.66rem; color:rgba(255,255,255,0.22); font-family:'JetBrains Mono',monospace; margin-top:8px; }
+    .rel-page { background:var(--white); border:1px solid var(--rule); border-radius:8px; overflow:hidden; }
+    .rel-capa { background:var(--navy); padding:30px; color:var(--white); }
+    .rel-marca { font-size:0.63rem; font-weight:600; letter-spacing:0.15em; text-transform:uppercase; color:rgba(255,255,255,0.25); margin-bottom:10px; font-family:'DM Mono',monospace; }
+    .rel-periodo { font-family:'DM Serif Display',serif; font-size:1.5rem; color:var(--white); margin-bottom:5px; }
+    .rel-cliente { font-size:0.84rem; color:rgba(255,255,255,0.45); }
+    .rel-gerado { font-size:0.65rem; color:rgba(255,255,255,0.18); font-family:'DM Mono',monospace; margin-top:8px; }
     .rel-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:1px; background:var(--rule); }
-    .rel-kpi { background:var(--branco); padding:18px 16px; }
+    .rel-kpi { background:var(--white); padding:18px 16px; }
     .rel-kpi.accent { background:var(--green-l); }
     .rel-kpi.danger { background:var(--red-l); }
-    .rel-kpi-num { font-family:'JetBrains Mono',monospace; font-size:1.2rem; font-weight:500; color:var(--ink); margin-bottom:3px; }
-    .rel-kpi-lbl { font-size:0.66rem; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.06em; }
+    .rel-kpi-num { font-family:'DM Mono',monospace; font-size:1.2rem; font-weight:500; color:var(--ink); margin-bottom:3px; }
+    .rel-kpi-lbl { font-size:0.65rem; color:var(--slate); text-transform:uppercase; letter-spacing:0.06em; }
     .rel-sec { padding:22px 28px; border-top:1px solid var(--rule); }
-    .rel-sec-titulo { font-size:0.66rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-3); margin-bottom:12px; }
+    .rel-sec-titulo { font-size:0.65rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--slate); margin-bottom:12px; }
     .rel-item { padding:10px 0; border-bottom:1px solid var(--rule); }
     .rel-item:last-child { border-bottom:none; }
-    .rel-item-data { font-family:'JetBrains Mono',monospace; font-size:0.67rem; color:var(--ink-3); margin-bottom:3px; }
+    .rel-item-data { font-family:'DM Mono',monospace; font-size:0.67rem; color:var(--slate); margin-bottom:3px; }
     .rel-item-desc { font-size:0.8rem; color:var(--ink-2); margin-bottom:2px; }
-    .rel-item-info { font-size:0.7rem; color:var(--verde); font-weight:500; }
+    .rel-item-info { font-size:0.7rem; color:var(--emerald); font-weight:500; }
 
     /* Notif */
-    #notif-global { display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--azul); color:var(--branco); font-size:0.8rem; padding:9px 18px; border-radius:6px; z-index:999; white-space:nowrap; box-shadow:0 4px 16px rgba(0,0,0,0.2); }
+    #notif-global { display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--navy); color:var(--white); font-size:0.8rem; padding:9px 18px; border-radius:6px; z-index:999; white-space:nowrap; box-shadow:0 4px 16px rgba(0,0,0,0.2); }
 
     /* Menu mobile */
-    .menu-overlay { display:none; position:fixed; inset:0; background:rgba(15,37,68,0.5); z-index:200; }
+    .menu-overlay { display:none; position:fixed; inset:0; background:rgba(10,22,40,0.5); z-index:200; }
     .menu-overlay.aberto { display:block; }
-    .menu-lateral { position:fixed; top:0; left:-270px; bottom:0; width:248px; background:var(--branco); z-index:201; transition:left 0.25s ease; display:flex; flex-direction:column; box-shadow:4px 0 20px rgba(0,0,0,0.12); }
+    .menu-lateral { position:fixed; top:0; left:-270px; bottom:0; width:248px; background:var(--white); z-index:201; transition:left 0.25s ease; display:flex; flex-direction:column; box-shadow:4px 0 20px rgba(0,0,0,0.12); }
     .menu-lateral.aberto { left:0; }
-    .menu-header { background:var(--azul); padding:16px 18px; display:flex; align-items:center; gap:10px; }
-    .menu-header-icon { width:28px; height:28px; background:var(--dourado); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:14px; }
-    .menu-header-text { font-family:'Fraunces',serif; font-size:0.95rem; color:var(--branco); }
+    .menu-header { background:var(--navy); padding:16px 18px; display:flex; align-items:center; gap:10px; }
+    .menu-header-icon { width:28px; height:28px; background:var(--emerald); border-radius:4px; display:flex; align-items:center; justify-content:center; }
+    .menu-header-text { font-family:'DM Serif Display',serif; font-size:0.95rem; color:var(--white); }
     .menu-body { flex:1; padding:12px 10px; display:flex; flex-direction:column; gap:2px; }
-    .menu-item { display:flex; align-items:center; gap:10px; padding:11px 12px; border-radius:4px; font-size:0.85rem; color:var(--ink-2); cursor:pointer; border:none; background:none; width:100%; text-align:left; font-family:'Plus Jakarta Sans',sans-serif; }
+    .menu-item { display:flex; align-items:center; gap:10px; padding:11px 12px; border-radius:4px; font-size:0.85rem; color:var(--ink-2); cursor:pointer; border:none; background:none; width:100%; text-align:left; font-family:'Inter',sans-serif; }
     .menu-item:hover { background:var(--bg); }
     .menu-footer { padding:12px 16px; border-top:1px solid var(--rule); }
-    .menu-plano { font-size:0.66rem; font-weight:600; color:var(--verde); text-transform:uppercase; letter-spacing:0.07em; margin-bottom:6px; }
-    .menu-email { font-size:0.68rem; color:var(--ink-3); font-family:'JetBrains Mono',monospace; margin-bottom:10px; }
-    .menu-sair { width:100%; background:var(--bg); border:1px solid var(--rule); color:var(--ink-2); font-family:'Plus Jakarta Sans',sans-serif; font-size:0.82rem; padding:9px; border-radius:4px; cursor:pointer; }
+    .menu-plano { font-size:0.65rem; font-weight:600; color:var(--emerald); text-transform:uppercase; letter-spacing:0.07em; margin-bottom:6px; }
+    .menu-email { font-size:0.67rem; color:var(--slate); font-family:'DM Mono',monospace; margin-bottom:10px; }
+    .menu-sair { width:100%; background:var(--bg); border:1px solid var(--rule); color:var(--ink-2); font-family:'Inter',sans-serif; font-size:0.82rem; padding:9px; border-radius:4px; cursor:pointer; }
     .btn-menu { display:none; background:none; border:none; cursor:pointer; padding:4px; }
     .hamburger { width:20px; height:15px; display:flex; flex-direction:column; justify-content:space-between; }
-    .hamburger span { display:block; height:2px; background:var(--branco); border-radius:2px; }
+    .hamburger span { display:block; height:2px; background:var(--white); border-radius:2px; }
 
     @keyframes spin { to { transform:rotate(360deg); } }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    @keyframes pulse { 0%,100%{opacity:0.7} 50%{opacity:0.3} }
     @keyframes bounce { 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }
     @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
 
     #tela-login { animation:fadeUp 0.4s ease both; }
-    #tela-painel > * { animation:fadeUp 0.3s ease both; }
 
     @media (max-width:720px) {
       .login-left { display:none; }
@@ -1070,6 +883,9 @@
       #tela-dashboard, #tela-relatorio { padding:14px; }
       .rel-sec { padding:14px; }
       .kpis { grid-template-columns:repeat(2,1fr); }
+      .economia-body { grid-template-columns:1fr; }
+      .credito-row { grid-template-columns:80px 1fr 80px; }
+      .credito-base { display:none; }
     }
   </style>
 </head>
@@ -1078,23 +894,26 @@
 <!-- LOGIN -->
 <div id="tela-login">
   <div class="login-left">
-    <div class="ll-marca"><div class="ll-marca-icon">🧮</div>Contábil Inteligente</div>
+    <div class="ll-marca">
+      <div class="ll-marca-icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+      Contábil Inteligente
+    </div>
     <div class="ll-body">
-      <h1 class="ll-headline">Copiloto<br><em>Fiscal, Financeiro</em><br>e Contábil.</h1>
-      <p class="ll-desc">Inteligência Artificial aplicada à auditoria fiscal — para empresas e escritórios contábeis de Mato Grosso.</p>
+      <h1 class="ll-headline">Recuperação<br>de Crédito<br><em>ICMS com IA.</em></h1>
+      <p class="ll-desc">Auditoria fiscal automatizada para empresas do Lucro Real e Lucro Presumido em Mato Grosso.</p>
       <div class="ll-features">
-        <div class="ll-feature"><div class="ll-dot"></div>Painel de auditoria com cálculos determinísticos</div>
-        <div class="ll-feature"><div class="ll-dot"></div>Guardrails fiscais: MEI, Simples, Presumido, Real</div>
+        <div class="ll-feature"><div class="ll-dot"></div>Matriz de elegibilidade ICMS — RICMS-MT</div>
+        <div class="ll-feature"><div class="ll-dot"></div>ICMS-ST, DIFAL, CIAP identificados automaticamente</div>
+        <div class="ll-feature"><div class="ll-dot"></div>Cálculos determinísticos — zero erro matemático</div>
         <div class="ll-feature"><div class="ll-dot"></div>CNPJ automático via Receita Federal</div>
-        <div class="ll-feature"><div class="ll-dot"></div>Tabela interativa com recálculo em tempo real</div>
       </div>
     </div>
-    <div class="ll-footer">contabilinteligente.api.br · © 2026</div>
+    <div class="ll-footer">contabilinteligente.api.br · Plano Ultra · © 2026</div>
   </div>
   <div class="login-right">
     <div class="login-form">
       <h2 class="lf-titulo">Acesso à Plataforma</h2>
-      <p class="lf-sub">Seu copiloto fiscal, financeiro e contábil</p>
+      <p class="lf-sub">Auditoria de crédito tributário ICMS</p>
       <label class="lf-label" for="email">E-mail</label>
       <input class="lf-input" type="email" id="email" placeholder="empresa@dominio.com.br" />
       <label class="lf-label" for="senha">Senha</label>
@@ -1110,9 +929,12 @@
 <div id="tela-app">
   <header class="topbar">
     <button class="btn-menu" onclick="abrirMenu()"><div class="hamburger"><span></span><span></span><span></span></div></button>
-    <div class="tb-marca"><div class="tb-icon">🧮</div>Contábil Inteligente</div>
+    <div class="tb-marca">
+      <div class="tb-icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+      Contábil Inteligente
+    </div>
     <div class="tb-div"></div>
-    <span class="tb-sub">Copiloto Fiscal, Financeiro e Contábil</span>
+    <span class="tb-sub">auditoria · icms · lucro real · lucro presumido</span>
     <div class="tb-user">
       <div class="tb-info">
         <div class="tb-nome" id="hd-nome"></div>
@@ -1125,9 +947,9 @@
 
   <div class="app-body">
     <aside class="sidebar">
-      <div class="nav-grupo">Principal</div>
-      <button class="nav-btn ativo" onclick="irParaTela('upload')"><span class="icon">⬆</span> Nova Análise</button>
-      <button class="nav-btn" onclick="irParaTela('painel')"><span class="icon">▦</span> Painel</button>
+      <div class="nav-grupo">Auditoria</div>
+      <button class="nav-btn ativo" onclick="irParaTela('upload')"><span class="icon">⬆</span> Nova Auditoria</button>
+      <button class="nav-btn" onclick="irParaTela('painel')"><span class="icon">▦</span> Laudo Fiscal</button>
       <div class="nav-grupo">Relatórios</div>
       <button class="nav-btn" onclick="irParaTela('dashboard')"><span class="icon">◈</span> Dashboard</button>
       <button class="nav-btn" onclick="irParaTela('relatorio')"><span class="icon">◉</span> Relatório Mensal</button>
@@ -1138,20 +960,27 @@
       <!-- TELA 1: UPLOAD -->
       <div id="tela-upload">
         <div class="upload-card">
-          <h2 class="upload-titulo">Nova Análise</h2>
-          <p class="upload-sub">Envie um extrato bancário, nota fiscal, CT-e ou laudo de solo. O sistema extrai, calcula e monta o painel automaticamente.</p>
+          <h2 class="upload-titulo">Nova Auditoria Fiscal</h2>
+          <p class="upload-sub">Envie NF-e, NFS-e, CT-e, SPED Fiscal ou DANFE. O sistema identifica créditos de ICMS elegíveis conforme RICMS-MT e LC 87/96.</p>
           <div class="dropzone" id="dropzone"
             ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)"
             onclick="selecionarArquivos()">
             <div class="dz-icon">📎</div>
             <div class="dz-title">Arraste ou clique para selecionar</div>
-            <div class="dz-sub">PDF, imagem JPG ou PNG · <strong>Clique para abrir</strong></div>
+            <div class="dz-tipos">
+              <span class="dz-tipo-tag">NF-e</span>
+              <span class="dz-tipo-tag">NFS-e</span>
+              <span class="dz-tipo-tag">CT-e</span>
+              <span class="dz-tipo-tag">SPED</span>
+              <span class="dz-tipo-tag">DANFE</span>
+              <span class="dz-tipo-tag">PDF</span>
+            </div>
           </div>
           <div id="chips-upload"></div>
-          <textarea class="upload-instrucao" id="upload-instrucao" rows="2" placeholder="Instrução adicional (opcional) — ex: foco em riscos fiscais, regime Simples..."></textarea>
+          <textarea class="upload-instrucao" id="upload-instrucao" rows="2" placeholder="Instrução adicional (opcional) — ex: foco em ICMS-ST, período jan-jun/26, regime Lucro Presumido..."></textarea>
           <div class="upload-meta">
             <span class="upload-lim" id="limite-info">Carregando...</span>
-            <button class="btn-analisar" id="btn-analisar" onclick="analisar()" disabled>Analisar →</button>
+            <button class="btn-analisar" id="btn-analisar" onclick="analisar()" disabled>Auditar →</button>
           </div>
           <input type="file" id="upload-input" accept="image/*,.pdf" multiple onchange="onArquivos(this)" />
         </div>
@@ -1161,17 +990,17 @@
       <div id="tela-processando">
         <div class="loading-card">
           <div class="loading-icon">🔍</div>
-          <div class="loading-titulo">Processando documento</div>
-          <div class="loading-msg" id="loading-msg">Iniciando análise...</div>
+          <div class="loading-titulo">Auditando documento</div>
+          <div class="loading-msg" id="loading-msg">Iniciando auditoria fiscal...</div>
           <div class="loading-bg"><div class="loading-bar" id="loading-bar"></div></div>
         </div>
       </div>
 
-      <!-- TELA 3: PAINEL DE AUDITORIA -->
+      <!-- TELA 3: LAUDO DE AUDITORIA -->
       <div id="tela-painel">
         <div class="painel-topbar">
-          <div class="painel-titulo">📊 Painel de Auditoria Fiscal</div>
-          <button class="btn-nova" onclick="novaAnalise()">↑ Nova Análise</button>
+          <div class="painel-titulo">Laudo de Auditoria Fiscal — Créditos ICMS</div>
+          <button class="btn-nova" onclick="novaAnalise()">↑ Nova Auditoria</button>
         </div>
 
         <!-- Card empresa -->
@@ -1180,97 +1009,67 @@
           <div class="pe-info"><div class="pe-nome">Carregando...</div></div>
         </div>
 
-        <!-- Grid: gráfico + alertas -->
+        <!-- Grid: créditos ICMS + alertas -->
         <div class="painel-grid">
           <div class="painel-card">
-            <div class="painel-card-header">📈 Balanço do Período</div>
-            <div id="painel-grafico"></div>
+            <div class="painel-card-header">Créditos ICMS Identificados</div>
+            <div id="painel-creditos"><p class="credito-vazio">Aguardando análise...</p></div>
           </div>
           <div class="painel-card">
-            <div class="painel-card-header">⚠️ Alertas Fiscais</div>
+            <div class="painel-card-header">Alertas Fiscais</div>
             <div class="alertas-lista" id="painel-alertas"></div>
           </div>
         </div>
 
-        <!-- Upsell Ultra (renderizado pelo backend quando critérios atingidos) -->
-        <div id="upsell-wrap" style="display:none;margin-bottom:16px"></div>
-
-        <!-- Tabela interativa -->
-        <div class="painel-tabela-full" id="painel-tabela-wrap" style="display:none">
-          <div class="painel-card-header" style="padding:11px 15px">📋 Transações — corrija a classificação se necessário</div>
-          <div class="tabela-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Data</th><th>Descrição</th><th>Categoria</th>
-                  <th style="text-align:right">Valor</th><th>Ação</th>
-                </tr>
-              </thead>
-              <tbody id="tabela-body"></tbody>
-            </table>
-          </div>
-          <!-- Teaser: linhas ocultas para clientes Plus -->
-          <div id="tabela-teaser" style="display:none">
-            <div class="teaser-blur">
-              <div class="teaser-row"></div>
-              <div class="teaser-row"></div>
-              <div class="teaser-row teaser-row-sm"></div>
-            </div>
-            <div class="teaser-cta">
-              <div class="teaser-cta-icon">🔒</div>
-              <div class="teaser-cta-texto">
-                <strong><span id="teaser-count">0</span> transações adicionais</strong> estão ocultas nesta análise.
-                Faça upgrade para o Plano Ultra para auditar o extrato completo.
-              </div>
-              <a href="https://wa.me/556593429981?text=Olá!%20Quero%20migrar%20para%20o%20Plano%20Ultra" target="_blank" class="teaser-btn">Desbloquear Ultra →</a>
-            </div>
-          </div>
-          <div class="recap">
-            <div class="recap-item"><div class="recap-lbl">Entradas</div><div class="recap-val res-pos" id="recap-entradas">R$ 0,00</div></div>
-            <div class="recap-divider"></div>
-            <div class="recap-item"><div class="recap-lbl">Saídas</div><div class="recap-val res-neg" id="recap-saidas">R$ 0,00</div></div>
-            <div class="recap-divider"></div>
-            <div class="recap-item"><div class="recap-lbl">Resultado</div><div class="recap-val" id="recap-resultado">R$ 0,00</div></div>
-            <span class="recap-rt">⚡ Recálculo em tempo real</span>
-          </div>
-        </div>
-
-        <!-- Economia fiscal + blur (blueprint §6) -->
+        <!-- Card economia + taxa de sucesso -->
         <div id="economia-wrap">
           <div class="economia-header">
-            <span class="economia-titulo">💰 Economia Fiscal Identificada</span>
+            <span class="economia-titulo">Crédito Tributário Identificado</span>
             <span class="economia-valor" id="economia-valor">R$ 0,00</span>
           </div>
           <div class="economia-body">
-            <p class="economia-desc">O sistema identificou oportunidade de recuperação tributária. Desbloqueie o guia completo de recuperação:</p>
-            <div class="economia-blur-wrap">
-              <div class="economia-blur-conteudo">
-                Passo 1: Levantamento dos créditos de ICMS acumulados no período...<br>
-                Passo 2: Escrituração dos créditos no SPED Fiscal conforme IN 86/2001...<br>
-                Passo 3: Pedido de ressarcimento via DARE com prazo de 60 dias úteis...<br>
-                Passo 4: Acompanhamento do processo junto à SEFAZ-MT...
+            <div class="economia-item">
+              <div class="economia-item-lbl">Honorários</div>
+              <div class="economia-item-val amber" id="economia-taxa-val">—</div>
+            </div>
+            <div class="economia-item">
+              <div class="economia-item-lbl">Taxa aplicada</div>
+              <div class="economia-item-val" id="economia-taxa-pct">—</div>
+            </div>
+            <div class="economia-item">
+              <div class="economia-item-lbl">Líquido cliente</div>
+              <div class="economia-item-val green" id="economia-liquido">—</div>
+            </div>
+          </div>
+          <div class="economia-footer">
+            <div class="economia-blur-wrap" style="position:relative">
+              <div style="filter:blur(4px);user-select:none;pointer-events:none;font-size:0.8rem;color:rgba(255,255,255,0.4);line-height:1.8;padding:8px 0">
+                Passo 1: Escrituração dos créditos no SPED Fiscal conforme Art. 20 LC 87/96...<br>
+                Passo 2: Pedido de ressarcimento ICMS-ST via SEFAZ-MT — Art. 457 RICMS-MT...<br>
+                Passo 3: Compensação de DIFAL apurado a maior — Art. 155 §2 CF/88...<br>
+                Passo 4: Controle CIAP — Fracionamento 1/48 avos — Arts. 400-406 RICMS-MT...
               </div>
-              <div class="economia-blur-overlay">
-                <button class="btn-desbloquear" id="btn-desbloquear" onclick="desbloquearGuia()">Desbloquear Guia de Recuperação</button>
-                <span class="economia-taxa">Taxa sobre economia: <strong id="economia-taxa-pct">—</strong> = <strong id="economia-taxa-val">—</strong></span>
+              <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+                <button class="btn-desbloquear" id="btn-desbloquear" onclick="desbloquearGuia()">Desbloquear Guia de Recuperação SEFAZ-MT</button>
+                <span id="economia-aliquota" style="font-size:0.68rem;color:rgba(255,255,255,0.25);font-family:'DM Mono',monospace"></span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Análise textual -->
+        <!-- Laudo textual da IA -->
         <div class="painel-analise">
-          <div class="painel-card-header">🤖 Análise Detalhada</div>
+          <div class="painel-card-header">Laudo de Auditoria Fiscal — Análise Detalhada</div>
           <div class="analise-body" id="painel-analise-texto"></div>
         </div>
 
         <!-- Chat inferior -->
         <div class="painel-chat">
-          <div class="painel-card-header">💬 Perguntas adicionais ao Copiloto</div>
+          <div class="painel-card-header">Consulta ao Auditor Fiscal IA</div>
           <div class="chat-msgs-wrap" id="chat-painel-msgs"></div>
           <div class="chat-input-row">
             <textarea class="cp-input" id="chat-painel-input" rows="1"
-              placeholder="Ex: Por que a linha 3 gerou risco de retenção de ISS?"
+              placeholder="Ex: Qual o procedimento para ressarcimento do ICMS-ST via SEFAZ-MT?"
               onkeypress="enterChatPainel(event)"></textarea>
             <button class="cp-enviar" onclick="enviarChatPainel()">Enviar</button>
           </div>
@@ -1280,24 +1079,24 @@
       <!-- DASHBOARD -->
       <div id="tela-dashboard">
         <h2 class="dash-titulo">Dashboard</h2>
-        <p class="dash-sub">Indicadores do mês corrente</p>
+        <p class="dash-sub">Créditos ICMS identificados no mês corrente</p>
         <div class="kpis">
-          <div class="kpi"><div class="kpi-icon">◈</div><div class="kpi-num" id="s-analises">0</div><div class="kpi-lbl">Análises</div></div>
-          <div class="kpi"><div class="kpi-icon">◎</div><div class="kpi-num" id="s-docs">0</div><div class="kpi-lbl">Documentos</div></div>
-          <div class="kpi"><div class="kpi-icon">◉</div><div class="kpi-num" id="s-econ">R$ 0,00</div><div class="kpi-lbl">Economia</div></div>
-          <div class="kpi"><div class="kpi-icon">△</div><div class="kpi-num" id="s-riscos">0</div><div class="kpi-lbl">Alertas</div></div>
+          <div class="kpi"><div class="kpi-num" id="s-analises">0</div><div class="kpi-lbl">Auditorias</div></div>
+          <div class="kpi"><div class="kpi-num" id="s-docs">0</div><div class="kpi-lbl">Documentos</div></div>
+          <div class="kpi"><div class="kpi-num" id="s-econ">R$ 0,00</div><div class="kpi-lbl">Créditos ICMS</div></div>
+          <div class="kpi"><div class="kpi-num" id="s-riscos">0</div><div class="kpi-lbl">Alertas</div></div>
         </div>
         <div class="panel">
-          <div class="panel-header">Histórico Recente</div>
-          <div id="hist-lista"><p class="empty">Nenhuma análise ainda.</p></div>
+          <div class="panel-header">Histórico de Auditorias</div>
+          <div id="hist-lista"><p class="empty">Nenhuma auditoria ainda.</p></div>
         </div>
       </div>
 
       <!-- RELATÓRIO -->
       <div id="tela-relatorio">
         <div class="rel-page" id="rel-conteudo">
-          <div style="padding:40px;text-align:center;color:var(--ink-3)">
-            <p style="font-family:'JetBrains Mono',monospace;font-size:0.8rem">Carregando relatório...</p>
+          <div style="padding:40px;text-align:center;color:var(--slate)">
+            <p style="font-family:'DM Mono',monospace;font-size:0.8rem">Carregando laudo...</p>
           </div>
         </div>
       </div>
@@ -1310,17 +1109,17 @@
   <div class="menu-overlay" id="menu-overlay" onclick="fecharMenu()"></div>
   <div class="menu-lateral" id="menu-lateral">
     <div class="menu-header">
-      <div class="menu-header-icon">🧮</div>
+      <div class="menu-header-icon"><svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:#fff;stroke-width:2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
       <div class="menu-header-text">Contábil Inteligente</div>
     </div>
     <div class="menu-body">
-      <button class="menu-item" onclick="navegarMenu('upload')">⬆ Nova Análise</button>
-      <button class="menu-item" onclick="navegarMenu('painel')">▦ Painel</button>
+      <button class="menu-item" onclick="navegarMenu('upload')">⬆ Nova Auditoria</button>
+      <button class="menu-item" onclick="navegarMenu('painel')">▦ Laudo Fiscal</button>
       <button class="menu-item" onclick="navegarMenu('dashboard')">◈ Dashboard</button>
       <button class="menu-item" onclick="navegarMenu('relatorio')">◉ Relatório Mensal</button>
     </div>
     <div class="menu-footer">
-      <div class="menu-plano" id="menu-plano-tag"></div>
+      <div class="menu-plano">Plano Ultra</div>
       <div class="menu-email" id="menu-email-tag"></div>
       <button class="menu-sair" onclick="fazerLogout()">Sair da plataforma</button>
     </div>
