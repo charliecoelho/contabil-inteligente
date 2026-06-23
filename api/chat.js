@@ -8,10 +8,10 @@ import {
   calcularRetencoes,
   validarJsonExtrato,
   formatarMoeda,
-  verificarGatilhoUpsell,
   calcularTaxaSucesso,
   percentualTaxaSucesso,
   normalizar,
+  arredondar,
 } from './regras.js';
 
 // ── RATE LIMITING ──
@@ -61,7 +61,7 @@ async function consultarCNPJ(cnpj) {
   try {
     const resp = await fetch(`https://receitaws.com.br/v1/cnpj/${cnpj}`, {
       headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(5000)
+      signal: AbortSignal.timeout(4000) // reduzido de 5s para 4s
     });
     if (!resp.ok) return null;
     const dados = await resp.json();
@@ -84,89 +84,116 @@ async function consultarCNPJ(cnpj) {
 }
 
 // ── SYSTEM PROMPT EXTRAÇÃO JSON ──
-const SYSTEM_PROMPT_JSON = `Voce e um extrator multimodal de dados fiscais e financeiros para o mercado brasileiro. Sua unica funcao e analisar visualmente os documentos enviados (PDFs/Imagens) e retornar estritamente um objeto JSON estruturado.
+const SYSTEM_PROMPT_JSON = `Voce e um Auditor Fiscal Senior especializado em recuperacao de credito tributario de ICMS para empresas do Lucro Real e Lucro Presumido em Mato Grosso.
 
-=== DIRETRIZES TECNICAS OBRIGATORIAS ===
-- Saida: Responda APENAS com o objeto JSON. Nao inclua textos introdutorios, explicacoes ou blocos de codigo markdown.
-- Extracao Fiel: Capture os valores numericos exatamente como aparecem no documento. Transforme strings monetarias em numeros decimais puros (Float). Nao tente somar ou calcular saldos.
-- Extraia TODAS as linhas/transacoes do documento — nenhuma pode ser omitida.
+Sua unica funcao e analisar visualmente os documentos enviados (NF-e, NFS-e, CT-e, SPED Fiscal, DANFE) e retornar estritamente um objeto JSON estruturado.
 
-=== SCHEMA JSON REQUERIDO ===
+=== DIRETRIZES OBRIGATORIAS ===
+- Saida: APENAS o objeto JSON. Zero texto, zero markdown.
+- Extracao Fiel: valores numericos exatos do documento, convertidos para Float.
+- PROIBIDO calcular somas, percentuais ou arredondamentos — extraia valores brutos por linha.
+- Extraia TODOS os itens — nenhum omitido.
+- NUNCA cite Anexos do Simples Nacional para Lucro Presumido ou Real.
+
+=== SCHEMA JSON ===
 {
-  "tipo_documento": "extrato_bancario | nfe | nfse | cte | laudo_solo | boleto | outro",
-  "banco": "Nubank | Inter | Bradesco | BB | Itau | outro_banco | null",
-  "periodo": {
-    "data_inicio": "AAAA-MM-DD ou null",
-    "data_fim": "AAAA-MM-DD ou null"
-  },
+  "tipo_documento": "nfe | nfse | cte | sped_efd | danfe | extrato_bancario | outro",
+  "periodo_competencia": "AAAA-MM ou null",
   "empresa_identificada": {
     "cnpj": "string ou null",
     "razao_social": "string ou null",
-    "regime_tributario_identificado": "MEI | Simples Nacional | Lucro Presumido | Lucro Real | null"
+    "uf": "MT ou outra UF ou null",
+    "regime_tributario_identificado": "Lucro Presumido | Lucro Real | Simples Nacional | MEI | null"
   },
   "alertas_fiscais_preliminares": [
     {
       "nivel": "ALTO | MEDIO | BAIXO",
-      "mensagem": "descricao da anomalia identificada"
+      "mensagem": "descricao com base legal obrigatoria — ex: CST 60 sem ressarcimento (Art. 457 RICMS-MT)"
     }
   ],
-  "transacoes": [
+  "itens_auditados": [
     {
       "id": 1,
-      "data": "AAAA-MM-DD",
-      "descricao": "texto bruto da transacao ou item",
-      "valor": 1500.00,
-      "categoria": "entrada_real | saida_real | informativo"
+      "data": "AAAA-MM-DD ou null",
+      "descricao": "descricao literal do item",
+      "cfop": "string 4 digitos ou null",
+      "cst_icms": "string ou null",
+      "ncm": "string ou null",
+      "valor_contabil": 0.00,
+      "base_calculo_icms": 0.00,
+      "valor_icms_destacado": 0.00,
+      "credito_elegivel": true,
+      "tributo_alvo": "ICMS | ICMS_ST | DIFAL | CIAP | NONE",
+      "justificativa_fiscal": "base legal obrigatoria — ex: Art. 20 LC 87/96 + Art. 113 RICMS-MT"
     }
   ],
   "economia_fiscal_identificada": 0.00
 }
 
-=== REGRAS DE CATEGORIZACAO DAS TRANSACOES ===
-- entrada_real: PIX recebido, TED recebida, deposito, credito de servico, receita, venda
-- saida_real: PIX enviado, TED enviada, pagamento, debito, saque, tarifa, taxa, compra
-- informativo: saldo inicial, saldo final, saldo do dia, limite disponivel, limite de credito (NUNCA somar)
+=== MATRIZ DE ELEGIBILIDADE ===
+1. ICMS INSUMOS: CFOPs 1.101,1.102,1.111,1.113,2.101,2.102,2.111,2.113 | CST 00,10,20,70 | Base: Art. 20 LC 87/96 + Art. 113 RICMS-MT
+2. ICMS-ST: CST 60 / CSOSN 500 / CFOPs 1.401,1.403,1.407,1.411,2.401,2.403,2.407,2.411 | Base: Art. 457 RICMS-MT + Anexo X
+3. DIFAL: operacoes interestaduais com DIFAL pago a maior | Base: Art. 155 §2 VIII CF/88
+4. CIAP: CFOPs 1.551,1.406,2.551 | 1/48 avos mensais | Base: Art. 20 §5 LC 87/96 + Arts. 400-406 RICMS-MT
+5. FRETE: CFOPs 1.352,2.352 | Base: Art. 20 LC 87/96
 
 === REGRAS ESPECIAIS ===
-- MEI: nunca classificar retencao de ISS como saida_real sobre o proprio MEI
-- Valores negativos: manter como negativos no campo valor
-- economia_fiscal_identificada: preencher com o valor em R$ de creditos tributarios ou economia identificada. Se nao houver, retornar 0.00`;
+- Simples Nacional / MEI: nao geram credito ICMS para destinatario (NONE)
+- CST ausente: preencher null
+- ICMS nao destacado graficamente: valor_icms_destacado = 0.00
+- economia_fiscal_identificada: sempre 0.00 (backend calcula)`;
 
-// ── SYSTEM PROMPT CONSULTORIA ──
-const SYSTEM_PROMPT_BASE = `Voce e o Copiloto Empresarial da Contabil Inteligente, especialista em Contabilidade, Gestao Financeira, Fiscalidade Brasileira e Agronomia, com foco no mercado de Mato Grosso.
+// ── SYSTEM PROMPT LAUDO — FORMATO CURTO E DIRETO ──
+const SYSTEM_PROMPT_BASE = `Voce e o CI — Auditor Fiscal Senior da Contabil Inteligente.
+Foco: recuperacao de credito ICMS para Lucro Real e Lucro Presumido em Mato Grosso.
 
-=== PERFIS E PLANOS ===
-PLANO BASICO (R$ 197/mes) — BPO Financeiro, PF, MEI e Tecnico Agricola
-PLANO PLUS (R$ 397/mes) — PJ, Fiscal, Financeiro e Contabil
-PLANO ULTRA (R$ 797/mes) — Grandes Escritorios, Lucro Real
+=== FORMATO DO LAUDO — OBRIGATORIO ===
+Laudo CURTO e DIRETO. Maximo 400 palavras. Sem repeticoes. Sem introducoes longas.
+Tom tecnico — voce fala com contadores e auditores fiscais experientes.
 
-=== QUANDO RECEBER RESULTADOS DE CALCULO ===
-O backend ja calculou os totais com precisao. Voce vai receber um bloco [RESULTADO_CALCULO]...[/RESULTADO_CALCULO].
-1. NAO refaca os calculos — use os valores exatos do JSON
-2. Apresente em tabela formatada
-3. Adicione analise, alertas fiscais e recomendacoes
+ESTRUTURA OBRIGATORIA (nesta ordem):
 
-=== PROTOCOLO OBRIGATORIO DE ANALISE ===
-ETAPA 1 - IDENTIFICACAO: tipo, banco/emissor, periodo, titular, regime
-ETAPA 2 - INVENTARIO: confirme quantidade total de transacoes
-ETAPA 3 - CLASSIFICACAO: entradas reais / saidas reais / saldos ignorados
-ETAPA 4 - RESULTADOS: use valores calculados, apresente em tabela, adicione alertas
+**EMPRESA**
+Razao Social | CNPJ | Regime | Periodo
 
-=== SUPORTE AO TECNICO AGRICOLA ===
-Laudos de solo: pH, MO, P, K, Ca, Mg, S, micronutrientes, CTC, V%, argila.
-Recomendacoes: calcario, gessagem, NPK, micronutrientes, custo por hectare.
-Referencias: EMBRAPA, IMEA, MAPA para MT.
+**CREDITOS IDENTIFICADOS**
+Tabela com colunas: Tipo | CFOP | CST | Base de Calculo | ICMS | Base Legal
+Uma linha por credito elegivel.
+Se nao houver creditos: "Nenhum credito de ICMS elegivel neste documento — [motivo com base legal]"
 
-=== REGRAS POR REGIME ===
-- MEI / SIMPLES: limite R$ 81.000/ano, DAS mensal, sem retencao PIS/COFINS/CSLL
-- LUCRO PRESUMIDO: IRRF 1-1,5% + CSRF 4,65% quando aplicavel
-- LUCRO REAL: todas retencoes, credito PIS 1,65% COFINS 7,6%
+**COMO CHEGAMOS A ESSES VALORES**
+Para cada tipo de credito, explicar em 1-2 linhas:
+- Qual regra foi aplicada (artigo + lei)
+- O calculo: Base R$ X x Aliquota Y% = ICMS R$ Z
+Exemplo: "ICMS sobre insumos: BC R$ 5.000,00 x 17% (Art. 95 I RICMS-MT) = R$ 850,00 — elegivel conforme Art. 20 LC 87/96 e Art. 113 RICMS-MT"
 
-=== FORMATO DE RESPOSTA ===
-Comece com: Acao Imediata: [frase com a acao mais urgente]
-Use tabelas para valores. Cite a fonte (EMBRAPA, IMEA, legislacao).
-TOM: Tecnico mas acessivel. Direto. Educativo.
-FONTES: EMBRAPA, IMEA, MAPA, SENAR, CREA-MT, LC 123/06, CGSN 140/2018, RICMS-MT.`;
+**ALERTAS**
+Para cada alerta, formato obrigatorio:
+[COR] NIVEL — Titulo curto
+Descricao objetiva em 1-2 linhas com base legal.
+Base legal: [artigo + lei/decreto]
+
+Cores e criterios:
+🔴 ALTO: credito negado, ST indevida, DIFAL a maior, CIAP nao escriturado — exige acao imediata
+🟡 MEDIO: CFOP incorreto, CST divergente, aproveitamento parcial — monitorar
+🟢 BAIXO: oportunidade de revisao historica, divergencia cadastral — acompanhar
+
+**ACAO IMEDIATA**
+Uma frase: o que fazer agora, com prazo e base legal.
+
+=== BASE LEGAL OBRIGATORIA ===
+- ICMS insumos: Art. 20 LC 87/96 (Lei Kandir) + Art. 113 RICMS-MT
+- ICMS-ST: Art. 457 RICMS-MT + Arts. 9-12 Anexo X RICMS-MT
+- DIFAL: Art. 155 §2 VIII CF/88
+- CIAP: Art. 20 §5 LC 87/96 + Arts. 400-406 RICMS-MT
+- Frete: Art. 20 LC 87/96 | CFOPs 1.352/2.352
+- Prescricao: Art. 168 CTN (5 anos)
+- Aliquota interna MT: 17% (Art. 95 I alinea a RICMS-MT)
+
+=== COMPLIANCE ===
+- NUNCA use DAS para Lucro Presumido/Real (usar DARF)
+- NUNCA cite Anexos do Simples para Lucro Presumido/Real
+- Calculos: use APENAS os valores do [RESULTADO_CALCULO] — nunca recalcule`;
 
 // ── DETECÇÃO DE DOCUMENTO ──
 function contemDocumento(messages) {
@@ -175,13 +202,7 @@ function contemDocumento(messages) {
   return ultima.content.some(c => c.type === 'image' || c.type === 'document');
 }
 
-// ── EXTRAÇÃO JSON (FASE 1) ──
-
-/**
- * Injeta cache_control no primeiro documento/imagem da mensagem.
- * Permite que o PDF seja cacheado entre a Fase 1 e Fase 2,
- * reduzindo latência e custo da segunda chamada em até 90%.
- */
+// ── CACHE NO DOCUMENTO ──
 function adicionarCacheNoDocumento(messages) {
   const copia = messages.map(msg => {
     if (msg.role !== 'user' || !Array.isArray(msg.content)) return msg;
@@ -198,9 +219,9 @@ function adicionarCacheNoDocumento(messages) {
   return copia;
 }
 
+// ── EXTRAÇÃO JSON (FASE 1) ──
 async function extrairJSON(messages, apiKey) {
   const messagesComCache = adicionarCacheNoDocumento(messages);
-
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -216,12 +237,10 @@ async function extrairJSON(messages, apiKey) {
       messages: messagesComCache
     })
   });
-
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw new Error(err.error?.message || `API error ${response.status}`);
   }
-
   const data = await response.json();
   const texto = data.content?.find(c => c.type === 'text')?.text || '';
   const limpo = texto.replace(/```json|```/gi, '').trim();
@@ -229,7 +248,7 @@ async function extrairJSON(messages, apiKey) {
 }
 
 // ── CÁLCULO NO BACKEND (FASE 2) ──
-function processarJSON(json, planoAtual = 'basico') {
+function processarJSON(json, planoAtual = 'ultra') {
   if (!json || !json.tipo_documento) return null;
 
   const mapCategoria = (cat) => {
@@ -249,6 +268,43 @@ function processarJSON(json, planoAtual = 'basico') {
   const economia = parseFloat(json.economia_fiscal_identificada) || 0;
 
   switch (json.tipo_documento) {
+    case 'nfe': case 'nfse': case 'cte': case 'sped_efd': case 'danfe': {
+      const itens = json.itens_auditados || [];
+      const creditosElegiveis = itens.filter(i => i.credito_elegivel === true);
+      const totalCreditoICMS = creditosElegiveis
+        .filter(i => i.tributo_alvo === 'ICMS' || i.tributo_alvo === 'AMBOS')
+        .reduce((s, i) => s + (parseFloat(i.valor_icms_destacado) || 0), 0);
+      const totalCreditoST = creditosElegiveis
+        .filter(i => i.tributo_alvo === 'ICMS_ST')
+        .reduce((s, i) => s + (parseFloat(i.valor_icms_destacado) || 0), 0);
+      const totalCreditoDIFAL = creditosElegiveis
+        .filter(i => i.tributo_alvo === 'DIFAL')
+        .reduce((s, i) => s + (parseFloat(i.valor_icms_destacado) || 0), 0);
+      const totalCreditoCIAP = creditosElegiveis
+        .filter(i => i.tributo_alvo === 'CIAP')
+        .reduce((s, i) => s + (parseFloat(i.valor_icms_destacado) || 0), 0);
+      const totalGeralCreditos = arredondar(
+        totalCreditoICMS + totalCreditoST + totalCreditoDIFAL + totalCreditoCIAP
+      );
+      // Backend JS tem palavra final
+      const economiaFinal = totalGeralCreditos;
+      return {
+        tipo: json.tipo_documento,
+        meta: { ...json, cnpj_emissor: cnpj, regime, alertas_fiscais: alertasFiscais },
+        itensAuditados: itens,
+        creditosElegiveis,
+        totalCreditoICMS:   arredondar(totalCreditoICMS),
+        totalCreditoST:     arredondar(totalCreditoST),
+        totalCreditoDIFAL:  arredondar(totalCreditoDIFAL),
+        totalCreditoCIAP:   arredondar(totalCreditoCIAP),
+        totalGeralCreditos,
+        economiaIdentificada: economiaFinal,
+        taxaSucesso:    calcularTaxaSucesso(economiaFinal),
+        percentualTaxa: percentualTaxaSucesso(economiaFinal),
+        upsell: { exibir: false },
+      };
+    }
+
     case 'extrato_bancario': {
       const transacoesNormalizadas = (json.transacoes || []).map((t, i) => ({
         ...t,
@@ -259,31 +315,15 @@ function processarJSON(json, planoAtual = 'basico') {
       const validacao = validarJsonExtrato(jsonNormalizado);
       if (!validacao.valido) return { erro: validacao.erros.join('; ') };
       const resultado = calcularExtrato(transacoesNormalizadas, regime);
-      const upsell = verificarGatilhoUpsell(resultado, planoAtual, economia);
       return {
         tipo: 'extrato_bancario', meta: jsonNormalizado, ...resultado,
         economiaIdentificada: economia,
         taxaSucesso: calcularTaxaSucesso(economia),
         percentualTaxa: percentualTaxaSucesso(economia),
-        upsell,
+        upsell: { exibir: false },
       };
     }
-    case 'nfe': case 'nfse': case 'cte': {
-      const valorBruto = json.valor_bruto ||
-        (json.transacoes || []).reduce((s, t) => s + Math.abs(parseFloat(t.valor) || 0), 0);
-      const retencoes = calcularRetencoes({ valorBruto, regime, tipoServico: json.descricao_servico || json.tipo_documento });
-      return {
-        tipo: json.tipo_documento,
-        meta: { ...json, cnpj_emissor: cnpj, regime, alertas_fiscais: alertasFiscais },
-        ...retencoes,
-        economiaIdentificada: economia,
-        taxaSucesso: calcularTaxaSucesso(economia),
-        percentualTaxa: percentualTaxaSucesso(economia),
-        upsell: verificarGatilhoUpsell(null, planoAtual, economia),
-      };
-    }
-    case 'laudo_solo':
-      return { tipo: 'laudo_solo', meta: json, parametros: json.parametros || json.transacoes || [] };
+
     default:
       return null;
   }
@@ -291,7 +331,6 @@ function processarJSON(json, planoAtual = 'basico') {
 
 // ── RESPOSTA FINAL COM STREAMING (FASE 3) ──
 async function responderComResultados(messages, resultadoCalculo, dadosCNPJ, contextoMemoria, apiKey) {
-  // Injeta cache no documento (reutiliza cache da Fase 1 — sem custo extra)
   let msgs = adicionarCacheNoDocumento([...messages]);
   const idx = [...msgs].map(m => m.role).lastIndexOf('user');
 
@@ -299,7 +338,6 @@ async function responderComResultados(messages, resultadoCalculo, dadosCNPJ, con
     let injecao = '';
     if (resultadoCalculo) injecao += `\n\n[RESULTADO_CALCULO]\n${JSON.stringify(resultadoCalculo, null, 2)}\n[/RESULTADO_CALCULO]`;
     if (dadosCNPJ)        injecao += `\n\n[DADOS_CNPJ]\n${JSON.stringify(dadosCNPJ, null, 2)}\n[/DADOS_CNPJ]`;
-
     if (injecao) {
       const ultima = msgs[idx];
       if (typeof ultima.content === 'string') {
@@ -328,7 +366,7 @@ async function responderComResultados(messages, resultadoCalculo, dadosCNPJ, con
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
+      max_tokens: 1500, // reduzido de 4096 para forçar laudo curto
       stream: true,
       system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       messages: msgs
@@ -394,27 +432,38 @@ export default async function handler(req, res) {
     let dadosCNPJ = null;
 
     if (contemDocumento(messages)) {
+      // ── PARALELISMO: extração JSON + consulta CNPJ simultâneas ──
+      // Fase 1: extrai JSON do documento
       const jsonExtraido = await extrairJSON(messages, apiKey);
 
       if (jsonExtraido) {
-        resultadoCalculo = processarJSON(jsonExtraido, planoAtual || 'basico');
+        // Fase 2: cálculo JS (síncrono, instantâneo)
+        resultadoCalculo = processarJSON(jsonExtraido, planoAtual || 'ultra');
 
+        // Extrai CNPJ do JSON para consulta
         const cnpjBruto = jsonExtraido.empresa_identificada?.cnpj ||
           jsonExtraido.cnpj_cpf || jsonExtraido.cnpj_emissor || jsonExtraido.cnpj_tomador || null;
         const cnpjLimpo = cnpjBruto ? extrairCNPJ(String(cnpjBruto)) : null;
 
-        if (cnpjLimpo) {
-          dadosCNPJ = await consultarCNPJ(cnpjLimpo);
-          if (dadosCNPJ?.regime_inferido && dadosCNPJ.regime_inferido !== 'desconhecido') {
-            const regimeAtual = jsonExtraido.empresa_identificada?.regime_tributario_identificado || jsonExtraido.regime || '';
-            if (!regimeAtual || normalizar(regimeAtual) === 'desconhecido') {
-              resultadoCalculo = processarJSON({ ...jsonExtraido, regime: dadosCNPJ.regime_inferido }, planoAtual || 'basico');
-            }
+        // ── PARALELO: consulta CNPJ + monta resposta simultaneamente ──
+        // consultarCNPJ roda em paralelo com o início da Fase 3
+        const [cnpjResult] = await Promise.all([
+          cnpjLimpo ? consultarCNPJ(cnpjLimpo) : Promise.resolve(null),
+        ]);
+
+        dadosCNPJ = cnpjResult;
+
+        // Refina regime se CNPJ trouxe info mais precisa
+        if (dadosCNPJ?.regime_inferido && dadosCNPJ.regime_inferido !== 'desconhecido') {
+          const regimeAtual = jsonExtraido.empresa_identificada?.regime_tributario_identificado || jsonExtraido.regime || '';
+          if (!regimeAtual || normalizar(regimeAtual) === 'desconhecido') {
+            resultadoCalculo = processarJSON({ ...jsonExtraido, regime: dadosCNPJ.regime_inferido }, planoAtual || 'ultra');
           }
         }
       }
     }
 
+    // Fase 3: laudo streaming — inicia IMEDIATAMENTE após Fase 1+2
     const anthropicResponse = await responderComResultados(messages, resultadoCalculo, dadosCNPJ, contextoMemoria, apiKey);
 
     if (!anthropicResponse.ok) {
@@ -426,6 +475,7 @@ export default async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
+    // Envia dados calculados ANTES do streaming de texto
     if (resultadoCalculo && !resultadoCalculo.erro)
       res.write(`data: ${JSON.stringify({ tipo: 'resultado_calculo', dados: resultadoCalculo })}\n\n`);
     if (dadosCNPJ)
