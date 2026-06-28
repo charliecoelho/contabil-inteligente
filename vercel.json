@@ -2,8 +2,6 @@
   "routes": [
     { "src": "/app", "dest": "/index.html" },
     { "src": "/app/(.*)", "dest": "/index.html" },
-    { "src": "/meu-caixa", "dest": "/meu-caixa/index.html" },
-    { "src": "/meu-caixa/(.*)", "dest": "/meu-caixa/$1" },
     { "src": "/", "dest": "/landing.html" }
   ]
 }
